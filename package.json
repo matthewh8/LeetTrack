@@ -1,0 +1,16 @@
+{
+  "name": "leettrack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-only LeetCode companion: streaks, submission quality, and spaced-repetition reviews.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node test/static.check.js",
+    "render": "node test/render.mjs",
+    "verify": "npm run test && npm run check"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

@@ -1,0 +1,12 @@
+.popup { width: 320px; padding: 14px; background: var(--surface); }
+.p-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.p-streak { display: flex; align-items: baseline; gap: 6px; }
+.p-figure { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+.p-unit { font-size: 12px; color: var(--text-2); }
+.p-sub { margin: 8px 0 12px; font-size: 12px; color: var(--text-2); }
+.p-queue h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px; }
+.p-item { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); }
+.p-item:first-of-type { border-top: 0; }
+.p-title { flex: 1; min-width: 0; font-size: 13px; color: var(--text-1); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-title:hover { text-decoration: underline; }
+.p-empty { font-size: 12px; color: var(--muted); padding: 6px 0; }

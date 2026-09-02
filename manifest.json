@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "LeetTrack",
+  "version": "0.1.0",
+  "description": "Streaks, submission quality, and spaced-repetition reviews for LeetCode. Everything stays on your machine.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage", "alarms", "notifications", "unlimitedStorage"],
+  "host_permissions": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+  "background": {
+    "service_worker": "src/bg/service-worker.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "src/ui/dashboard.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_popup": "src/ui/popup.html",
+    "default_title": "LeetTrack",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+      "js": ["src/content/interceptor.js"],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+      "js": ["src/content/bridge.js"],
+      "world": "ISOLATED",
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

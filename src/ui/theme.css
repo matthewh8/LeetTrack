@@ -1,0 +1,162 @@
+/* Design tokens. Light is defined on bare :root; dark is redefined under both
+   the OS media query and an explicit [data-theme] stamp so the toggle wins in
+   either direction.
+
+   Color is assigned by job, not by taste:
+     accent / heat ramp  -> magnitude (sequential blue, validated 100-700)
+     good / warning / critical -> status (difficulty, verdicts)
+   Green and red are ~4 dE apart under deuteranopia, so status hue NEVER carries
+   meaning alone: every difficulty and verdict is labelled, and the verdict chart
+   encodes accepted/wrong by direction as well as color. */
+
+:root {
+  color-scheme: light;
+
+  --plane:      #f9f9f7;
+  --surface:    #fcfcfb;
+  --surface-2:  #f2f1ec;
+  --text-1:     #0b0b0b;
+  --text-2:     #52514e;
+  --muted:      #898781;
+  --grid:       #e1e0d9;
+  --axis:       #c3c2b7;
+  --border:     rgba(11, 11, 11, 0.10);
+  --ring:       rgba(42, 120, 214, 0.35);
+
+  --accent:     #2a78d6;
+  --accent-ink: #ffffff;
+  --accent-wash:rgba(42, 120, 214, 0.10);
+
+  --good:       #0ca30c;
+  --warning:    #fab219;
+  --critical:   #d03b3b;
+
+  --heat-0: #e6e4dd;
+  --heat-1: #86b6ef;
+  --heat-2: #5598e7;
+  --heat-3: #2a78d6;
+  --heat-4: #1c5cab;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.04), 0 1px 8px rgba(11, 11, 11, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane:     #0d0d0d;
+    --surface:   #1a1a19;
+    --surface-2: #232322;
+    --text-1:    #ffffff;
+    --text-2:    #c3c2b7;
+    --muted:     #898781;
+    --grid:      #2c2c2a;
+    --axis:      #383835;
+    --border:    rgba(255, 255, 255, 0.10);
+    --ring:      rgba(57, 135, 229, 0.45);
+    --accent:    #3987e5;
+    --accent-wash: rgba(57, 135, 229, 0.16);
+    --heat-0: #232322;
+    --heat-1: #184f95;
+    --heat-2: #256abf;
+    --heat-3: #3987e5;
+    --heat-4: #86b6ef;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 8px rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane:     #0d0d0d;
+  --surface:   #1a1a19;
+  --surface-2: #232322;
+  --text-1:    #ffffff;
+  --text-2:    #c3c2b7;
+  --muted:     #898781;
+  --grid:      #2c2c2a;
+  --axis:      #383835;
+  --border:    rgba(255, 255, 255, 0.10);
+  --ring:      rgba(57, 135, 229, 0.45);
+  --accent:    #3987e5;
+  --accent-wash: rgba(57, 135, 229, 0.16);
+  --heat-0: #232322;
+  --heat-1: #184f95;
+  --heat-2: #256abf;
+  --heat-3: #3987e5;
+  --heat-4: #86b6ef;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 8px rgba(0, 0, 0, 0.3);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--text-1);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 0;
+}
+.card-head h2 { font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-2); }
+.card-head .note { font-size: 12px; color: var(--muted); }
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-1);
+  cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn-sm { padding: 4px 9px; font-size: 12px; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* Shared tooltip for heatmap / calendar / chart hover layers. */
+#tip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0;
+  transition: opacity 90ms ease;
+}
+#tip[data-show="1"] { opacity: 1; }
+#tip b { font-weight: 600; }
+#tip .t-sub { color: var(--text-2); }

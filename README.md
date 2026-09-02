@@ -1,0 +1,110 @@
+# LeetTrack
+
+A local-only Chrome extension that turns LeetCode practice into something you can
+actually see: a **streak**, your **submission quality**, and a **spaced-repetition
+review schedule** so solved problems don't quietly evaporate.
+
+Everything lives in `chrome.storage.local`. There is no server, no account, and no
+telemetry. The only network requests the extension makes are to LeetCode itself,
+using the session you're already signed in with.
+
+![LeetTrack dashboard](docs/dashboard-dark.png)
+
+## What it does
+
+- **Streak** — current and longest run, active days, and a contribution heatmap.
+  A day only breaks the streak once it has fully passed, so an empty evening
+  doesn't panic you at 6pm.
+- **Spaced repetition** — every solved problem is scheduled for review on a
+  configurable ladder (default `1, 3, 7, 14, 30, 60, 120` days). `Done` graduates
+  it to the next interval, `Again` sends it back to the start, `Snooze` pushes a
+  day without losing progress.
+- **Submission quality** — acceptance rate, attempts per accept, and a diverging
+  chart of accepted vs. wrong answers over the last 14 days.
+- **Popup** — the streak and today's review queue with one-tap Done.
+
+## Install (unpacked)
+
+```bash
+git clone https://github.com/matthewh8/LeetTrack.git
+```
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. **Load unpacked** → select the cloned folder
+4. Open leetcode.com while signed in, then click the LeetTrack icon
+
+Requires Chrome 111+ (the capture path uses `"world": "MAIN"` content scripts).
+
+## How capture works
+
+Two independent paths, so neither one failing loses your history:
+
+**Live interception.** `src/content/interceptor.js` runs in the *page's* JS
+context and wraps `fetch`/`XHR` to observe LeetCode's own
+`/submissions/detail/{id}/check/` polling. That's the only way to see verdicts —
+an isolated content script can't observe the page's fetches, and MV3 removed
+response-body access from `webRequest`. It observes only: it never alters
+arguments, always clones the response, and swallows its own errors so a change
+on LeetCode's side cannot break the page. `src/content/bridge.js` validates the
+message and relays it to the service worker.
+
+**GraphQL reconciliation.** The service worker periodically queries
+`recentAcSubmissionList` to backfill solves made while no instrumented tab was
+open, and `question(titleSlug:)` to fill in difficulty and topic tags. If the
+submit endpoint ever changes shape, live capture degrades but solve history and
+streaks stay correct.
+
+## Layout
+
+```
+manifest.json
+src/lib/        time, streak, scheduler, stats  (pure — no chrome.*, unit-tested)
+                storage, leetcode-api           (the only chrome.* / network layers)
+src/content/    interceptor (MAIN world), bridge (isolated)
+src/bg/         service worker — messaging, sync alarm, reminders
+src/ui/         dashboard + popup, components/
+test/           unit tests, static checks, render harness
+```
+
+No build step and no runtime dependencies — plain ES modules, loaded directly.
+Playwright is a dev dependency used only by the render harness.
+
+## Development
+
+```bash
+npm test        # 34 unit tests: day boundaries, streaks, scheduling, stats
+npm run check   # manifest refs resolve; lib/ stays free of chrome.*
+npm run render  # screenshots the dashboard light/dark/narrow into shots/
+```
+
+`npm run render` seeds a fake `chrome.storage` with fixture data and drives a
+headless Chromium, so the UI can be checked without loading the extension. It
+also fails on page errors and horizontal overflow.
+
+## Verification status
+
+Unit tests, static checks, and the render harness all pass. **The two capture
+paths are not yet verified against live LeetCode** — that needs a signed-in
+session, which the development container doesn't have. Load the extension
+unpacked and submit one problem to confirm end-to-end.
+
+## Design notes
+
+Colors are assigned by job rather than taste. The heatmap is a single-hue
+sequential blue ramp; difficulty and verdicts use the reserved status palette.
+Green and red sit only ~4 ΔE apart under deuteranopia, so **hue never carries
+meaning alone**: difficulty counts are always spelled out beside the bar, and the
+verdict chart encodes accepted/wrong by *direction* (above/below the baseline)
+with color as redundant reinforcement.
+
+## Privacy
+
+- No remote server, no analytics, no account.
+- Requests go only to `leetcode.com` / `leetcode.cn`, authenticated by the cookie
+  your browser already sends. The extension never reads or stores that cookie.
+- `Export JSON` writes a file locally; `Import JSON` reads one back.
+
+## License
+
+MIT

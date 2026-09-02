@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LeetTrack</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-in">
+      <div class="brand">
+        <img src="../../icons/icon-32.png" alt="" width="22" height="22">
+        <div>
+          <h1>LeetTrack</h1>
+          <p id="sync-note">Loading…</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-sm" id="btn-sync">Sync now</button>
+        <button class="btn btn-sm" id="btn-theme" aria-label="Toggle theme">Theme</button>
+        <button class="btn btn-sm" id="btn-settings" aria-expanded="false">Settings</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="main">
+    <section class="hero" aria-label="Summary">
+      <div class="card stat">
+        <div class="card-head"><h2>Current streak</h2></div>
+        <div class="stat-body">
+          <p class="figure tabular" id="streak-n">—</p>
+          <p class="figure-unit" id="streak-unit">days</p>
+        </div>
+        <p class="stat-sub" id="streak-sub"></p>
+        <dl class="stat-meta">
+          <div><dt>Longest</dt><dd class="tabular" id="streak-longest">—</dd></div>
+          <div><dt>Active days</dt><dd class="tabular" id="streak-active">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="card stat">
+        <div class="card-head"><h2>Problems solved</h2></div>
+        <div class="stat-body">
+          <p class="figure tabular" id="solved-n">—</p>
+          <p class="figure-unit">unique</p>
+        </div>
+        <div class="diffbar" id="diffbar" role="img" aria-label="Solved by difficulty"></div>
+        <ul class="difflegend" id="difflegend"></ul>
+      </div>
+
+      <div class="card stat" id="due-card">
+        <div class="card-head"><h2>Due for review</h2></div>
+        <div class="stat-body">
+          <p class="figure tabular" id="due-n">—</p>
+          <p class="figure-unit">today</p>
+        </div>
+        <p class="stat-sub" id="due-sub"></p>
+        <button class="btn btn-primary" id="btn-review" hidden>Start reviewing</button>
+      </div>
+    </section>
+
+    <section class="card block" aria-labelledby="hm-h">
+      <div class="card-head">
+        <h2 id="hm-h">Activity</h2>
+        <span class="note" id="hm-note"></span>
+      </div>
+      <div class="heatmap-scroll"><div id="heatmap"></div></div>
+    </section>
+
+    <div class="two-col">
+      <section class="card block" aria-labelledby="rev-h">
+        <div class="card-head">
+          <h2 id="rev-h">Reviews</h2>
+          <span class="note" id="rev-note"></span>
+        </div>
+        <div id="calendar" class="cal"></div>
+        <div id="queue" class="queue"></div>
+      </section>
+
+      <div class="col-right">
+      <section class="card block" aria-labelledby="q-h">
+        <div class="card-head">
+          <h2 id="q-h">Submission quality</h2>
+          <span class="note">Last 14 days</span>
+        </div>
+        <div class="stat-body q-hero">
+          <p class="figure tabular" id="acc-rate">—</p>
+          <p class="figure-unit">acceptance rate</p>
+        </div>
+        <dl class="qstats" id="qstats"></dl>
+        <div id="verdict" class="vc-wrap"></div>
+        <p class="note q-foot" id="q-foot"></p>
+      </section>
+
+      <section class="card block" aria-labelledby="rs-h">
+        <div class="card-head"><h2 id="rs-h">Recent solves</h2></div>
+        <div id="recent" class="recent"></div>
+      </section>
+      </div>
+    </div>
+
+    <p class="footnote">
+      Everything stays in this browser. Nothing is uploaded.
+      <button class="linkish" id="btn-export">Export JSON</button> ·
+      <button class="linkish" id="btn-import">Import JSON</button>
+      <input type="file" id="file-import" accept="application/json" hidden>
+    </p>
+  </main>
+
+  <dialog id="settings" class="sheet">
+    <form method="dialog" class="sheet-in" id="settings-form">
+      <h2>Settings</h2>
+
+      <label class="field">
+        <span>Timezone</span>
+        <input name="timezone" id="f-tz" list="tz-list" autocomplete="off">
+        <datalist id="tz-list"></datalist>
+        <small>Day boundaries for streaks and reviews.</small>
+      </label>
+
+      <label class="field">
+        <span>Review intervals (days)</span>
+        <input name="intervals" id="f-intervals" inputmode="numeric" autocomplete="off">
+        <small>Comma separated. Each “Done” moves a problem to the next one.</small>
+      </label>
+
+      <label class="field row">
+        <input type="checkbox" name="dailyReminder" id="f-remind">
+        <span>Daily reminder</span>
+      </label>
+
+      <label class="field" id="f-hour-wrap">
+        <span>Remind me at</span>
+        <select name="reminderHour" id="f-hour"></select>
+      </label>
+
+      <label class="field">
+        <span>Theme</span>
+        <select name="theme" id="f-theme">
+          <option value="system">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+
+      <p class="sheet-msg" id="settings-msg" role="status"></p>
+
+      <div class="sheet-actions">
+        <button class="btn" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn btn-primary" id="btn-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

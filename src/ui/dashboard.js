@@ -1,4 +1,6 @@
-import { readAll, saveSettings, reviewAction, exportAll, importAll } from '../lib/storage.js';
+import {
+  readAll, saveSettings, reviewAction, exportAll, importAll, resetHistoryFrom, normaliseDayKey,
+} from '../lib/storage.js';
 import { todayKey, addDays, diffDays } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
 import { dueBy, dueCountsByDay } from '../lib/scheduler.js';
@@ -245,6 +247,7 @@ $('#btn-settings').addEventListener('click', () => {
   const s = state.settings;
   $('#f-tz').value = s.timezone;
   $('#f-intervals').value = s.intervals.join(',');
+  $('#f-track-from').value = s.trackFrom || '';
   $('#f-remind').checked = s.dailyReminder;
   $('#f-hour').value = String(s.reminderHour);
   $('#f-theme').value = s.theme;
@@ -262,15 +265,35 @@ try {
 $('#settings-form').addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'save') return;
   const f = new FormData(e.target);
+
+  const prevFrom = state.settings.trackFrom || null;
+  let trackFrom = normaliseDayKey(f.get('trackFrom'));
+  // Moving the start date forward deletes history, so ask once and let a
+  // decline keep the old date rather than the rest of the form.
+  const prunes = trackFrom && trackFrom !== prevFrom && hasDataBefore(trackFrom);
+  if (prunes && !confirm(
+    `Delete all LeetTrack history before ${trackFrom}?\n\n`
+    + 'This cannot be undone — export first if you want a copy.')) {
+    trackFrom = prevFrom;
+  }
+
   state.settings = await saveSettings({
     timezone: String(f.get('timezone') || '').trim(),
     intervals: String(f.get('intervals') || ''),
+    trackFrom,
     dailyReminder: f.get('dailyReminder') === 'on',
     reminderHour: Number(f.get('reminderHour')),
     theme: String(f.get('theme')),
   });
+
+  if (trackFrom && trackFrom !== prevFrom) await resetHistoryFrom(trackFrom);
   await load();
 });
+
+function hasDataBefore(key) {
+  return Object.keys(state.days).some((k) => k < key)
+    || state.attempts.some((a) => a.day < key);
+}
 
 // ---- export / import ----
 $('#btn-export').addEventListener('click', async () => {

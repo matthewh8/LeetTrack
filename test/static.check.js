@@ -32,7 +32,7 @@ for (const page of ['src/ui/dashboard.html', 'src/ui/popup.html']) {
   }
 }
 
-const PURE = ['time.js', 'streak.js', 'scheduler.js', 'stats.js'];
+const PURE = ['time.js', 'streak.js', 'scheduler.js', 'stats.js', 'prune.js'];
 for (const f of PURE) {
   const src = stripComments(readFileSync(join('src/lib', f), 'utf8'));
   if (/\bchrome\./.test(src)) fail.push(`src/lib/${f} references chrome.* — must stay pure`);

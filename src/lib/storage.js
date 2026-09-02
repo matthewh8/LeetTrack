@@ -3,6 +3,7 @@
 
 import { dayKey, localTimeZone, isValidTimeZone } from './time.js';
 import { DEFAULT_INTERVALS, scheduleFirst, applyReview, parseIntervals } from './scheduler.js';
+import { pruneState } from './prune.js';
 
 const NS = 'leettrack:v1:';
 export const KEYS = {
@@ -24,7 +25,18 @@ export function defaultSettings() {
     dailyReminder: true,
     reminderHour: 20,
     theme: 'system',
+    // Inclusive "YYYY-MM-DD" start of tracked history; null = track everything.
+    trackFrom: null,
   };
+}
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function normaliseDayKey(value) {
+  const key = String(value ?? '').trim();
+  if (!DAY_KEY.test(key)) return null;
+  // Rejects 2026-02-31 and friends, which the regex alone would let through.
+  return dayKey(new Date(`${key}T12:00:00Z`), 'UTC') === key ? key : null;
 }
 
 function withDefaults(stored) {
@@ -32,6 +44,7 @@ function withDefaults(stored) {
   if (!isValidTimeZone(s.timezone)) s.timezone = localTimeZone();
   s.intervals = parseIntervals(Array.isArray(s.intervals) ? s.intervals.join(',') : s.intervals);
   s.reminderHour = Math.min(23, Math.max(0, Number(s.reminderHour) || 20));
+  s.trackFrom = normaliseDayKey(s.trackFrom);
   return s;
 }
 
@@ -91,6 +104,13 @@ export async function recordSubmission(sub) {
   const at = sub.at || Date.now();
   const key = dayKey(new Date(at), settings.timezone);
   const accepted = sub.verdict === 'Accepted';
+
+  // History starts at `trackFrom`. The GraphQL backfill always reports the last
+  // 20 accepted solves, so without this the pruned ones would return on the
+  // next sync.
+  if (settings.trackFrom && key < settings.trackFrom) {
+    return { added: false, firstSolve: false, skipped: 'before-track-from' };
+  }
 
   const attempt = {
     id: sub.id,
@@ -209,6 +229,29 @@ export async function importAll(payload, { merge = false } = {}) {
     [KEYS.settings]: withDefaults(incoming.settings),
     [KEYS.meta]: { schemaVersion: SCHEMA_VERSION, importedAt: Date.now() },
   });
+}
+
+/**
+ * Delete everything before `fromKey` and stop accepting solves older than it.
+ * Returns the per-collection counts removed, or null if `fromKey` is unusable.
+ */
+export async function resetHistoryFrom(fromKey) {
+  const from = normaliseDayKey(fromKey);
+  if (!from) return null;
+
+  const current = await readAll();
+  const { state, removed } = pruneState(current, from, current.settings.timezone);
+
+  await chrome.storage.local.set({
+    [KEYS.problems]: state.problems,
+    [KEYS.attempts]: state.attempts,
+    [KEYS.days]: state.days,
+    [KEYS.reviews]: state.reviews,
+    [KEYS.settings]: withDefaults({ ...current.settings, trackFrom: from }),
+  });
+  await patchMeta({ historyResetAt: Date.now(), trackFrom: from });
+
+  return removed;
 }
 
 export async function clearAll() {

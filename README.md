@@ -22,6 +22,9 @@ using the session you're already signed in with.
 - **Submission quality** — acceptance rate, attempts per accept, and a diverging
   chart of accepted vs. wrong answers over the last 14 days.
 - **Popup** — the streak and today's review queue with one-tap Done.
+- **Track from** — a start date for your history. Solves before it are ignored,
+  and setting one deletes what came before, so you can wipe test data or start a
+  fresh season without uninstalling.
 
 ## Install (unpacked)
 
@@ -59,7 +62,7 @@ streaks stay correct.
 
 ```
 manifest.json
-src/lib/        time, streak, scheduler, stats  (pure — no chrome.*, unit-tested)
+src/lib/        time, streak, scheduler, stats, prune  (pure — no chrome.*, tested)
                 storage, leetcode-api           (the only chrome.* / network layers)
 src/content/    interceptor (MAIN world), bridge (isolated)
 src/bg/         service worker — messaging, sync alarm, reminders
@@ -73,7 +76,7 @@ Playwright is a dev dependency used only by the render harness.
 ## Development
 
 ```bash
-npm test        # 34 unit tests: day boundaries, streaks, scheduling, stats
+npm test        # 42 unit tests: day boundaries, streaks, scheduling, stats, pruning
 npm run check   # manifest refs resolve; lib/ stays free of chrome.*
 npm run render  # screenshots the dashboard light/dark/narrow into shots/
 ```
@@ -88,6 +91,17 @@ Unit tests, static checks, and the render harness all pass. **The two capture
 paths are not yet verified against live LeetCode** — that needs a signed-in
 session, which the development container doesn't have. Load the extension
 unpacked and submit one problem to confirm end-to-end.
+
+## Starting over
+
+`Settings → Track from` sets the first day that counts. Saving a date does two
+things: it deletes every attempt, day, problem, and review before it, and it
+stores the date as a cutoff so `recordSubmission` drops anything older. The
+second half is what makes it stick — the GraphQL backfill re-reports your last
+20 accepted solves on every sync, so a delete without a cutoff would undo itself
+within half an hour. Problems solved both before and after the date survive with
+their counts re-derived from the solves that were kept. Export first if you want
+the old history back; there is no undo.
 
 ## Design notes
 

@@ -35,9 +35,9 @@ main { padding-bottom: 56px; }
 .difflegend li { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .difflegend b { color: var(--text-1); font-variant-numeric: tabular-nums; }
 .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
-.sw[data-d="Easy"], .sw[data-v="ac"] { background: var(--good); }
+.sw[data-d="Easy"] { background: var(--good); }
 .sw[data-d="Medium"] { background: var(--warning); }
-.sw[data-d="Hard"], .sw[data-v="wa"] { background: var(--critical); }
+.sw[data-d="Hard"] { background: var(--critical); }
 
 /* ---- blocks ---- */
 .block { padding-bottom: 18px; margin-bottom: 16px; }
@@ -97,7 +97,7 @@ main { padding-bottom: 56px; }
 .q-main { flex: 1; min-width: 0; }
 .q-title { display: block; font-weight: 500; color: var(--text-1); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-title:hover { text-decoration: underline; }
-.q-meta { font-size: 12px; color: var(--muted); }
+.q-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .q-actions { display: flex; gap: 6px; flex: none; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
 .tag[data-d="Easy"] { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
@@ -105,26 +105,22 @@ main { padding-bottom: 56px; }
 .tag[data-d="Hard"] { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 40%, transparent); }
 .overdue { color: var(--critical); }
 
-/* ---- quality ---- */
-.q-hero { padding-top: 10px; }
-.qstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 18px 0; padding: 0; }
-.qstats div { display: flex; flex-direction: column; gap: 2px; }
-.qstats dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-.qstats dd { margin: 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.vc-wrap { padding: 18px 18px 0; }
-.vc { display: flex; align-items: stretch; gap: 3px; position: relative; }
-.vc::after { content: ''; position: absolute; left: 0; right: 0; top: var(--up); border-top: 1px solid var(--axis); }
-.vc-col { flex: 1; display: flex; flex-direction: column; min-width: 6px; cursor: default; }
-.vc-col:hover i { filter: brightness(1.15); }
-.vc-up { height: var(--up); display: flex; align-items: flex-end; }
-.vc-down { height: var(--down); display: flex; align-items: flex-start; }
-.vc-up i { display: block; width: 100%; background: var(--good); border-radius: 4px 4px 0 0; }
-.vc-down i { display: block; width: 100%; background: var(--critical); border-radius: 0 0 4px 4px; }
-.vc-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 6px; }
-.vc-legend { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
-.vc-legend span { display: flex; align-items: center; gap: 6px; }
-.t-sub, .vc-legend .t-sub { color: var(--muted); }
-.q-foot { margin: 14px 18px 0; }
+/* ---- patterns ---- */
+.patterns { padding: 12px 18px 0; }
+.pat-row { display: grid; grid-template-columns: minmax(0, 1fr) 108px 30px; align-items: center; gap: 10px; padding: 5px 0; }
+.pat-tag { font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pat-bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.pat-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.pat-n { font-size: 13px; color: var(--text-2); text-align: right; }
+.pat-more { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+/* Neutral by design: there are far too many patterns to give each a hue
+   without cycling, so the tag name carries the identity and color stays out. */
+.chip {
+  flex: none; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2);
+  border: 1px solid var(--border); white-space: nowrap;
+}
 
 /* ---- recent ---- */
 .recent { padding: 6px 18px 0; }
@@ -168,8 +164,7 @@ main, .card, .block, .stat { min-width: 0; }
 .topbar-actions { flex: 0 0 auto; }
 
 @media (max-width: 620px) {
-  .qstats { grid-template-columns: repeat(2, 1fr); }
-  .q-item { flex-wrap: wrap; }
+    .q-item { flex-wrap: wrap; }
   .q-actions { width: 100%; }
   .stat-meta { gap: 16px; }
 }

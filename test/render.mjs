@@ -36,18 +36,28 @@ const shift = (k, n) => {
 const today = key(new Date());
 
 const NAMES = [
-  ['two-sum', 'Two Sum', 'Easy'], ['add-two-numbers', 'Add Two Numbers', 'Medium'],
-  ['longest-substring-without-repeating-characters', 'Longest Substring Without Repeating Characters', 'Medium'],
-  ['median-of-two-sorted-arrays', 'Median of Two Sorted Arrays', 'Hard'],
-  ['valid-parentheses', 'Valid Parentheses', 'Easy'], ['merge-k-sorted-lists', 'Merge k Sorted Lists', 'Hard'],
-  ['course-schedule', 'Course Schedule', 'Medium'], ['lru-cache', 'LRU Cache', 'Medium'],
-  ['word-ladder', 'Word Ladder', 'Hard'], ['climbing-stairs', 'Climbing Stairs', 'Easy'],
-  ['coin-change', 'Coin Change', 'Medium'], ['number-of-islands', 'Number of Islands', 'Medium'],
-  ['best-time-to-buy-and-sell-stock', 'Best Time to Buy and Sell Stock', 'Easy'],
-  ['trapping-rain-water', 'Trapping Rain Water', 'Hard'], ['binary-search', 'Binary Search', 'Easy'],
-  ['product-of-array-except-self', 'Product of Array Except Self', 'Medium'],
-  ['validate-binary-search-tree', 'Validate Binary Search Tree', 'Medium'],
-  ['serialize-and-deserialize-binary-tree', 'Serialize and Deserialize Binary Tree', 'Hard'],
+  ['two-sum', 'Two Sum', 'Easy', ['Array', 'Hash Table']],
+  ['add-two-numbers', 'Add Two Numbers', 'Medium', ['Linked List', 'Math', 'Recursion']],
+  ['longest-substring-without-repeating-characters', 'Longest Substring Without Repeating Characters', 'Medium', ['Hash Table', 'String', 'Sliding Window']],
+  ['median-of-two-sorted-arrays', 'Median of Two Sorted Arrays', 'Hard', ['Array', 'Binary Search', 'Divide and Conquer']],
+  ['valid-parentheses', 'Valid Parentheses', 'Easy', ['String', 'Stack']],
+  ['merge-k-sorted-lists', 'Merge k Sorted Lists', 'Hard', ['Linked List', 'Heap (Priority Queue)', 'Divide and Conquer', 'Merge Sort']],
+  ['course-schedule', 'Course Schedule', 'Medium', ['Depth-First Search', 'Breadth-First Search', 'Graph', 'Topological Sort']],
+  ['lru-cache', 'LRU Cache', 'Medium', ['Hash Table', 'Linked List', 'Design', 'Doubly-Linked List']],
+  ['word-ladder', 'Word Ladder', 'Hard', ['Hash Table', 'String', 'Breadth-First Search']],
+  ['climbing-stairs', 'Climbing Stairs', 'Easy', ['Math', 'Dynamic Programming', 'Memoization']],
+  ['coin-change', 'Coin Change', 'Medium', ['Array', 'Dynamic Programming', 'Breadth-First Search']],
+  ['number-of-islands', 'Number of Islands', 'Medium', ['Depth-First Search', 'Breadth-First Search', 'Union Find', 'Matrix']],
+  ['best-time-to-buy-and-sell-stock', 'Best Time to Buy and Sell Stock', 'Easy', ['Array', 'Dynamic Programming']],
+  ['trapping-rain-water', 'Trapping Rain Water', 'Hard', ['Array', 'Two Pointers', 'Dynamic Programming', 'Monotonic Stack']],
+  ['binary-search', 'Binary Search', 'Easy', ['Array', 'Binary Search']],
+  ['product-of-array-except-self', 'Product of Array Except Self', 'Medium', ['Array', 'Prefix Sum']],
+  ['validate-binary-search-tree', 'Validate Binary Search Tree', 'Medium', ['Tree', 'Depth-First Search', 'Binary Search Tree']],
+  ['serialize-and-deserialize-binary-tree', 'Serialize and Deserialize Binary Tree', 'Hard', ['Tree', 'Depth-First Search', 'Breadth-First Search', 'Design']],
+  ['minimum-window-substring', 'Minimum Window Substring', 'Hard', ['Hash Table', 'String', 'Sliding Window']],
+  ['longest-repeating-character-replacement', 'Longest Repeating Character Replacement', 'Medium', ['Hash Table', 'String', 'Sliding Window']],
+  ['3sum', '3Sum', 'Medium', ['Array', 'Two Pointers', 'Sorting']],
+  ['container-with-most-water', 'Container With Most Water', 'Medium', ['Array', 'Two Pointers', 'Greedy']],
 ];
 
 let seed = 20260902;
@@ -67,7 +77,7 @@ for (let i = 181; i >= 0; i -= 1) {
   const slugs = [];
   let att = 0, acc = 0;
   for (let j = 0; j < n; j += 1) {
-    const [slug, title, difficulty] = NAMES[nameI++ % NAMES.length];
+    const [slug, title, difficulty, topicTags] = NAMES[nameI++ % NAMES.length];
     const wrong = rnd() < 0.45 ? Math.ceil(rnd() * 2) : 0;
     const at = Date.parse(`${k}T18:0${j}:00Z`);
     for (let w = 0; w < wrong; w += 1) {
@@ -80,7 +90,7 @@ for (let i = 181; i >= 0; i -= 1) {
     const prev = problems[slug];
     problems[slug] = {
       slug, title, difficulty,
-      frontendId: String(nameI), topicTags: [],
+      frontendId: String(nameI), topicTags,
       firstSolvedAt: prev?.firstSolvedAt || at,
       lastSolvedAt: at,
       solveCount: (prev?.solveCount || 0) + 1,
@@ -115,7 +125,7 @@ const browser = await chromium.launch({
 });
 const errors = [];
 
-async function shot(path, file, { width, height, dark, full }) {
+async function shot(path, file, { width, height, dark, full, open }) {
   const ctx = await browser.newContext({
     viewport: { width, height },
     colorScheme: dark ? 'dark' : 'light',
@@ -150,6 +160,11 @@ async function shot(path, file, { width, height, dark, full }) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 1) errors.push(`[${file}] horizontal overflow of ${overflow}px`);
 
+  if (open) {
+    await page.click(open);
+    await page.waitForTimeout(250);
+  }
+
   await page.screenshot({ path: join(OUT, file), fullPage: !!full });
   await ctx.close();
 }
@@ -158,6 +173,7 @@ mkdirSync(OUT, { recursive: true });
 await shot('src/ui/dashboard.html', 'dashboard-light.png', { width: 1280, height: 1400, dark: false, full: true });
 await shot('src/ui/dashboard.html', 'dashboard-dark.png', { width: 1280, height: 1400, dark: true, full: true });
 await shot('src/ui/dashboard.html', 'dashboard-narrow.png', { width: 560, height: 1000, dark: false, full: true });
+await shot('src/ui/dashboard.html', 'settings.png', { width: 900, height: 760, dark: false, open: '#btn-settings' });
 await shot('src/ui/popup.html', 'popup-dark.png', { width: 340, height: 300, dark: true });
 
 await browser.close();
@@ -167,4 +183,4 @@ if (errors.length) {
   console.error('Render problems:\n' + errors.map((e) => `  - ${e}`).join('\n'));
   process.exit(1);
 }
-console.log(`rendered 4 screenshots into ${OUT}`);
+console.log(`rendered 5 screenshots into ${OUT}`);

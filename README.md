@@ -19,8 +19,12 @@ using the session you're already signed in with.
   configurable ladder (default `1, 3, 7, 14, 30, 60, 120` days). `Done` graduates
   it to the next interval, `Again` sends it back to the start, `Snooze` pushes a
   day without losing progress.
-- **Submission quality** — acceptance rate, attempts per accept, and a diverging
-  chart of accepted vs. wrong answers over the last 14 days.
+- **Patterns** — which techniques you've actually practised, ranked. LeetCode
+  tags every problem, but its tags mix the *technique* that solves it (Sliding
+  Window, Monotonic Stack) with the *container* it happens to use (Array, String,
+  Hash Table). Raw, the generic ones drown out the useful ones — "Two Sum: Array,
+  Hash Table" says nothing about what you practised. So tags are ranked by how
+  much they say about approach and the best one or two are surfaced.
 - **Popup** — the streak and today's review queue with one-tap Done.
 - **Track from** — a start date for your history. Solves before it are ignored,
   and setting one deletes what came before, so you can wipe test data or start a
@@ -106,11 +110,13 @@ the old history back; there is no undo.
 ## Design notes
 
 Colors are assigned by job rather than taste. The heatmap is a single-hue
-sequential blue ramp; difficulty and verdicts use the reserved status palette.
-Green and red sit only ~4 ΔE apart under deuteranopia, so **hue never carries
-meaning alone**: difficulty counts are always spelled out beside the bar, and the
-verdict chart encodes accepted/wrong by *direction* (above/below the baseline)
-with color as redundant reinforcement.
+sequential blue ramp; difficulty uses the reserved status palette. Green and red
+sit only ~4 ΔE apart under deuteranopia, so **hue never carries meaning alone** —
+difficulty counts are always spelled out beside the bar.
+
+Pattern chips are deliberately neutral. There are far more patterns than a
+categorical palette can hold without cycling hues, so the tag name carries the
+identity and color stays out of it.
 
 ## Privacy
 

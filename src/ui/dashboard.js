@@ -4,10 +4,10 @@ import {
 import { todayKey, addDays, diffDays } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
 import { dueBy, dueCountsByDay } from '../lib/scheduler.js';
-import { difficultyCounts, qualityStats, mostRetried, recentSolves, DIFFICULTIES } from '../lib/stats.js';
+import { difficultyCounts, recentSolves, DIFFICULTIES } from '../lib/stats.js';
+import { patternsFor, patternCounts } from '../lib/patterns.js';
 import { renderHeatmap } from './components/heatmap.js';
 import { renderCalendar } from './components/calendar.js';
-import { renderVerdictChart } from './components/verdict-chart.js';
 import { createTooltip } from './components/tooltip.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -42,7 +42,7 @@ async function load() {
 }
 
 function render(today) {
-  const { days, problems, reviews, attempts, settings, meta } = state;
+  const { days, problems, reviews, settings, meta } = state;
 
   // ---- streak ----
   const streak = computeStreak(days, today);
@@ -122,21 +122,8 @@ function render(today) {
     .reduce((s, [, v]) => s + (v.solved || 0), 0);
   $('#hm-note').textContent = `${solvedWindow} solved in the last ${weeks} weeks`;
 
-  // ---- quality ----
-  const q = qualityStats(days, today, 14);
-  $('#acc-rate').textContent = q.attempts ? `${Math.round(q.acceptanceRate * 100)}%` : '—';
-  $('#qstats').innerHTML = `
-    <div><dt>Attempts</dt><dd>${q.attempts}</dd></div>
-    <div><dt>Accepted</dt><dd>${q.accepted}</dd></div>
-    <div><dt>Per accept</dt><dd>${q.accepted ? q.attemptsPerAc.toFixed(1) : '—'}</dd></div>`;
-  renderVerdictChart($('#verdict'), { series: q.series, tip });
-
-  const retried = mostRetried(attempts, addDays(today, -13), (a) => a.day);
-  const bits = [];
-  if (q.bestDay) bits.push(`Best day ${q.bestDay.key.slice(5)} — ${q.bestDay.accepted} accepted in ${q.bestDay.attempts}.`);
-  if (retried) bits.push(`Most retries: ${problems[retried.slug]?.title || retried.slug} (${retried.wrong} wrong).`);
-  else if (q.attempts) bits.push('No wrong answers in this window.');
-  $('#q-foot').textContent = bits.join(' ') || 'No submissions captured yet.';
+  // ---- patterns ----
+  renderPatterns(problems);
 
   // ---- recent ----
   const recent = recentSolves(problems, 8);
@@ -145,6 +132,7 @@ function render(today) {
         <div class="r-item">
           <div class="r-main">
             <a class="q-title" href="${problemUrl(p.slug, meta.host)}" target="_blank" rel="noreferrer">${escapeHtml(p.title)}</a>
+            ${patternChips(p) ? `<span class="q-meta">${patternChips(p)}</span>` : ''}
           </div>
           ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
           <span class="r-when">${relativeDay(dayOf(p.lastSolvedAt, state.settings.timezone), today)}</span>
@@ -164,6 +152,44 @@ function dayOf(ms, tz) {
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** Chips for the one or two tags that actually say something about approach. */
+function patternChips(problem) {
+  return patternsFor(problem?.topicTags)
+    .map((t) => `<span class="chip">${escapeHtml(t)}</span>`)
+    .join('');
+}
+
+/**
+ * Which techniques you've actually practised, most first. Counts can exceed the
+ * problem total because a problem can surface two patterns — that's the point,
+ * not double counting.
+ */
+function renderPatterns(problems) {
+  const counts = patternCounts(problems);
+  const el = $('#patterns');
+
+  if (!counts.length) {
+    $('#pat-note').textContent = '';
+    el.innerHTML = '<p class="empty">Solve a few problems and the techniques behind them show up here. '
+      + 'Tags are fetched from LeetCode on the next sync.</p>';
+    return;
+  }
+
+  const shown = counts.slice(0, 9);
+  const max = shown[0].count;
+  const tagged = Object.values(problems).filter((p) => p.topicTags?.length).length;
+  $('#pat-note').textContent = `${counts.length} across ${tagged} problem${tagged === 1 ? '' : 's'}`;
+
+  el.innerHTML = shown.map((c) => `
+    <div class="pat-row">
+      <span class="pat-tag" title="${escapeHtml(c.tag)}">${escapeHtml(c.tag)}</span>
+      <span class="pat-bar"><i style="width:${Math.max(4, (c.count / max) * 100)}%"></i></span>
+      <span class="pat-n tabular">${c.count}</span>
+    </div>`).join('')
+    + (counts.length > shown.length
+      ? `<p class="pat-more">+${counts.length - shown.length} more</p>` : '');
 }
 
 function renderQueue(today, counts) {
@@ -192,7 +218,7 @@ function renderQueue(today, counts) {
       <div class="q-item" data-slug="${escapeHtml(r.slug)}">
         <div class="q-main">
           <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${escapeHtml(p.title)}</a>
-          <span class="q-meta">${late ? `<span class="overdue">due ${relativeDay(r.dueOn, today)}</span>` : `stage ${r.stage + 1}`}</span>
+          <span class="q-meta">${late ? `<span class="overdue">due ${relativeDay(r.dueOn, today)}</span>` : `stage ${r.stage + 1}`}${patternChips(p)}</span>
         </div>
         ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
         <div class="q-actions">

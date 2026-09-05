@@ -15,17 +15,27 @@ using the session you're already signed in with.
 - **Streak** — current and longest run, active days, and a contribution heatmap.
   A day only breaks the streak once it has fully passed, so an empty evening
   doesn't panic you at 6pm.
+- **A day that ends at 2am, not midnight** — solve something at 1am and it
+  counts towards the day you were already having. The boundary is configurable
+  (`Settings → A new day starts at`), and moving it re-files the history you
+  already have.
 - **Spaced repetition** — every solved problem is scheduled for review on a
   configurable ladder (default `1, 3, 7, 14, 30, 60, 120` days). `Done` graduates
-  it to the next interval, `Again` sends it back to the start, `Snooze` pushes a
-  day without losing progress.
+  it to the next interval and `Again` sends it back to the start. When you can't
+  face it today: `Delay` pushes it by a day, a week, or any number of days you
+  type, and `Skip this cycle` pushes it a whole interval at the current stage —
+  neither counts as a review, so the ladder doesn't move.
+- **Needs review** — a star on any problem, in the queue or in recent solves,
+  that pulls it to the top of the queue whatever its due date says. For the ones
+  you technically solved but couldn't explain a week later.
 - **Patterns** — which techniques you've actually practised, ranked. LeetCode
   tags every problem, but its tags mix the *technique* that solves it (Sliding
   Window, Monotonic Stack) with the *container* it happens to use (Array, String,
   Hash Table). Raw, the generic ones drown out the useful ones — "Two Sum: Array,
   Hash Table" says nothing about what you practised. So tags are ranked by how
   much they say about approach and the best one or two are surfaced.
-- **Popup** — the streak and today's review queue with one-tap Done.
+- **Popup** — the streak and today's review queue, with one-tap Done and a
+  one-tap push to tomorrow.
 - **Track from** — a start date for your history. Solves before it are ignored,
   and setting one deletes what came before, so you can wipe test data or start a
   fresh season without uninstalling.
@@ -66,8 +76,9 @@ streaks stay correct.
 
 ```
 manifest.json
-src/lib/        time, streak, scheduler, stats, prune  (pure — no chrome.*, tested)
-                storage, leetcode-api           (the only chrome.* / network layers)
+src/lib/        time, streak, scheduler, stats, prune, rekey
+                                        (pure — no chrome.*, tested)
+                storage, leetcode-api   (the only chrome.* / network layers)
 src/content/    interceptor (MAIN world), bridge (isolated)
 src/bg/         service worker — messaging, sync alarm, reminders
 src/ui/         dashboard + popup, components/
@@ -80,7 +91,8 @@ Playwright is a dev dependency used only by the render harness.
 ## Development
 
 ```bash
-npm test        # 42 unit tests: day boundaries, streaks, scheduling, stats, pruning
+npm test        # 83 unit tests: day boundaries and windows, streaks, scheduling,
+                #   stats, pruning, and the day-window migration
 npm run check   # manifest refs resolve; lib/ stays free of chrome.*
 npm run render  # screenshots the dashboard light/dark/narrow into shots/
 ```
@@ -95,6 +107,22 @@ Unit tests, static checks, and the render harness all pass. **The two capture
 paths are not yet verified against live LeetCode** — that needs a signed-in
 session, which the development container doesn't have. Load the extension
 unpacked and submit one problem to confirm end-to-end.
+
+## The day window
+
+Day keys are baked into rows when they're recorded — `attempt.day`, and the
+whole per-day rollup the streak and heatmap read. So moving the boundary can't
+just change how new solves are filed; the history already on disk would keep
+describing the old one, and a 1am solve from last week would still be sitting on
+the wrong day.
+
+`src/lib/rekey.js` re-derives both from the one thing that never changes, the
+attempt's epoch timestamp, and rebuilds the rollup from the attempts that
+survive. `syncDayWindow` stamps the applied window in `meta`, so the work
+happens once — on upgrade, on a settings change, or after a timezone change,
+which had the same staleness problem and was never re-applied before. Days
+older than the oldest surviving attempt are left alone: attempts are capped at
+5000, and there is no evidence left to re-file them with.
 
 ## Starting over
 

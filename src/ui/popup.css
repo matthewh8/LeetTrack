@@ -10,3 +10,5 @@
 .p-title { flex: 1; min-width: 0; font-size: 13px; color: var(--text-1); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-title:hover { text-decoration: underline; }
 .p-empty { font-size: 12px; color: var(--muted); padding: 6px 0; }
+.p-flag { flex: none; font-size: 12px; line-height: 1; color: var(--accent); }
+.p-item .btn { flex: none; }

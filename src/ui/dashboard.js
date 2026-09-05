@@ -1,9 +1,12 @@
 import {
-  readAll, saveSettings, reviewAction, exportAll, importAll, resetHistoryFrom, normaliseDayKey,
+  readAll, saveSettings, reviewAction, setNeedsReview, syncDayWindow,
+  exportAll, importAll, resetHistoryFrom, normaliseDayKey,
 } from '../lib/storage.js';
-import { todayKey, addDays, diffDays } from '../lib/time.js';
+import { todayKey, dayKey, addDays, diffDays, hourLabel } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
-import { dueBy, dueCountsByDay } from '../lib/scheduler.js';
+import {
+  dueBy, dueCountsByDay, flaggedReviews, intervalAt, normaliseDelay, DELAY_PRESETS,
+} from '../lib/scheduler.js';
 import { difficultyCounts, recentSolves, DIFFICULTIES } from '../lib/stats.js';
 import { patternsFor, patternCounts } from '../lib/patterns.js';
 import { renderHeatmap } from './components/heatmap.js';
@@ -33,9 +36,12 @@ function relativeDay(key, today) {
 }
 
 async function load() {
+  // Cheap no-op unless the window moved; the first run after an upgrade or a
+  // settings change is the one that re-files history.
+  await syncDayWindow().catch(() => {});
   state = await readAll();
   applyTheme(state.settings.theme);
-  const today = todayKey(state.settings.timezone);
+  const today = todayKey(state.settings.timezone, state.settings.dayStartHour);
   if (!view.month) view.month = today.slice(0, 7);
   if (!view.selected) view.selected = today;
   render(today);
@@ -56,7 +62,7 @@ function render(today) {
       ? (streak.current >= streak.longest
           ? 'Personal best — keep it going.'
           : `${streak.toRecord} more day${streak.toRecord === 1 ? '' : 's'} to beat your record.`)
-      : 'Not solved yet today — the streak holds until midnight.';
+      : `Not solved yet today — the streak holds until ${hourLabel(settings.dayStartHour)}.`;
 
   // ---- difficulty ----
   const diff = difficultyCounts(problems);
@@ -89,11 +95,15 @@ function render(today) {
   const due = dueBy(reviews, today);
   const counts = dueCountsByDay(reviews);
   $('#due-n').textContent = due.length;
-  const overdue = due.filter((r) => r.dueOn < today).length;
+  const overdue = due.filter((r) => r.dueOn < today && !r.needsReview).length;
+  const flagged = flaggedReviews(reviews).length;
+  const notes = [];
+  if (overdue) notes.push(`${overdue} overdue`);
+  if (flagged) notes.push(`${flagged} marked needs review`);
   $('#due-sub').textContent = !Object.keys(reviews).length
     ? 'Reviews are scheduled automatically when you solve something.'
     : due.length
-      ? (overdue ? `${overdue} overdue` : 'Scheduled for today')
+      ? (notes.length ? notes.join(' · ') : 'Scheduled for today')
       : 'Nothing due — next one is later.';
   const reviewBtn = $('#btn-review');
   reviewBtn.hidden = due.length === 0;
@@ -129,13 +139,14 @@ function render(today) {
   const recent = recentSolves(problems, 8);
   $('#recent').innerHTML = recent.length
     ? recent.map((p) => `
-        <div class="r-item">
+        <div class="r-item" data-slug="${escapeHtml(p.slug)}">
           <div class="r-main">
             <a class="q-title" href="${problemUrl(p.slug, meta.host)}" target="_blank" rel="noreferrer">${escapeHtml(p.title)}</a>
             ${patternChips(p) ? `<span class="q-meta">${patternChips(p)}</span>` : ''}
           </div>
           ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
           <span class="r-when">${relativeDay(dayOf(p.lastSolvedAt, state.settings.timezone), today)}</span>
+          ${flagButton(reviews[p.slug])}
         </div>`).join('')
     : '<p class="empty">Solve a problem on LeetCode and it will appear here.</p>';
 
@@ -146,8 +157,7 @@ function render(today) {
 }
 
 function dayOf(ms, tz) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
-    .format(new Date(ms));
+  return dayKey(new Date(ms), tz, state.settings.dayStartHour);
 }
 
 function escapeHtml(s) {
@@ -192,8 +202,41 @@ function renderPatterns(problems) {
       ? `<p class="pat-more">+${counts.length - shown.length} more</p>` : '');
 }
 
+/**
+ * A "needs review" toggle. Flagged problems jump the queue whatever their due
+ * date says — the schedule is a guess, and this is you overriding it.
+ */
+function flagButton(review) {
+  const on = !!review?.needsReview;
+  const label = on ? 'Remove the needs-review mark' : 'Mark as needing review';
+  return `<button class="btn btn-sm btn-flag" data-act="${on ? 'unflag' : 'flag'}"
+    aria-pressed="${on}" aria-label="${label}" title="${label}">${on ? '\u2605' : '\u2606'}</button>`;
+}
+
+function delayMenu(review, intervals) {
+  const cycle = intervalAt(intervals, review.stage);
+  return `
+    <details class="menu">
+      <summary class="btn btn-sm">Delay</summary>
+      <div class="menu-pop">
+        <p class="menu-h">Push it back</p>
+        ${DELAY_PRESETS.map((o) =>
+          `<button type="button" class="menu-item" data-act="delay" data-days="${o.days}">${o.label}</button>`).join('')}
+        <div class="menu-row">
+          <input class="q-days" type="number" min="1" max="3650" step="1" placeholder="days"
+            aria-label="Delay by a number of days">
+          <button type="button" class="btn btn-sm" data-act="delay" data-days="custom">Delay</button>
+        </div>
+        <hr class="menu-sep">
+        <button type="button" class="menu-item" data-act="skip">
+          Skip this cycle <span class="menu-hint">+${cycle}d, stage ${review.stage + 1} kept</span>
+        </button>
+      </div>
+    </details>`;
+}
+
 function renderQueue(today, counts) {
-  const { reviews, problems, meta } = state;
+  const { reviews, problems, settings, meta } = state;
   const showingToday = view.selected === today;
   const list = showingToday
     ? dueBy(reviews, today)
@@ -214,31 +257,78 @@ function renderQueue(today, counts) {
   el.innerHTML = `<h3>${heading} · ${list.length}</h3>` + list.map((r) => {
     const p = problems[r.slug] || { title: r.slug };
     const late = r.dueOn < today;
+    const when = late
+      ? `<span class="overdue">due ${relativeDay(r.dueOn, today)}</span>`
+      : `<span>${r.dueOn === today ? `stage ${r.stage + 1}` : `due ${relativeDay(r.dueOn, today)}`}</span>`;
     return `
-      <div class="q-item" data-slug="${escapeHtml(r.slug)}">
+      <div class="q-item" data-slug="${escapeHtml(r.slug)}"${r.needsReview ? ' data-flagged="1"' : ''}>
         <div class="q-main">
           <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${escapeHtml(p.title)}</a>
-          <span class="q-meta">${late ? `<span class="overdue">due ${relativeDay(r.dueOn, today)}</span>` : `stage ${r.stage + 1}`}${patternChips(p)}</span>
+          <span class="q-meta">${r.needsReview ? '<span class="flagged">Needs review</span>' : ''}${when}${patternChips(p)}</span>
         </div>
         ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
         <div class="q-actions">
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>
           <button class="btn btn-sm" data-act="again">Again</button>
-          <button class="btn btn-sm" data-act="snooze">Snooze</button>
+          ${delayMenu(r, settings.intervals)}
+          ${flagButton(r)}
         </div>
       </div>`;
   }).join('');
 }
 
-$('#queue').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-act]');
-  if (!btn) return;
-  const slug = btn.closest('[data-slug]')?.dataset.slug;
+/**
+ * One handler for every per-problem button, in the queue and in recent solves
+ * alike. `delay` is the only one that carries an argument: a preset number of
+ * days, or whatever was typed into the box beside the Delay button.
+ */
+async function runAction(btn) {
+  const host = btn.closest('[data-slug]');
+  const slug = host?.dataset.slug;
   if (!slug) return;
+  const action = btn.dataset.act;
+
+  if (action === 'flag' || action === 'unflag') {
+    btn.disabled = true;
+    await setNeedsReview(slug, action === 'flag');
+    tip.hide();
+    await load();
+    return;
+  }
+
+  let opts = {};
+  if (action === 'delay') {
+    const input = host.querySelector('.q-days');
+    const days = normaliseDelay(btn.dataset.days === 'custom' ? input?.value : btn.dataset.days);
+    if (!days) {
+      input?.focus();
+      return;
+    }
+    opts = { days };
+  }
+
   btn.disabled = true;
-  await reviewAction(slug, btn.dataset.act);
+  await reviewAction(slug, action, opts);
   tip.hide();
   await load();
+}
+
+for (const sel of ['#queue', '#recent']) {
+  $(sel).addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (btn) runAction(btn);
+  });
+}
+
+// A delay menu left open would sit over the row beneath it after a re-render.
+document.addEventListener('click', (e) => {
+  for (const menu of document.querySelectorAll('.menu[open]')) {
+    if (!menu.contains(e.target)) menu.open = false;
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  for (const menu of document.querySelectorAll('.menu[open]')) menu.open = false;
 });
 
 $('#btn-review').addEventListener('click', () => {
@@ -274,6 +364,7 @@ $('#btn-settings').addEventListener('click', () => {
   $('#f-tz').value = s.timezone;
   $('#f-intervals').value = s.intervals.join(',');
   $('#f-track-from').value = s.trackFrom || '';
+  $('#f-day-start').value = String(s.dayStartHour);
   $('#f-remind').checked = s.dailyReminder;
   $('#f-hour').value = String(s.reminderHour);
   $('#f-theme').value = s.theme;
@@ -283,6 +374,8 @@ $('#btn-settings').addEventListener('click', () => {
 
 $('#f-hour').innerHTML = Array.from({ length: 24 }, (_, h) =>
   `<option value="${h}">${String(h).padStart(2, '0')}:00</option>`).join('');
+$('#f-day-start').innerHTML = Array.from({ length: 24 }, (_, h) =>
+  `<option value="${h}">${hourLabel(h)}${h === 0 ? ' (midnight)' : ''}</option>`).join('');
 try {
   const zones = Intl.supportedValuesOf?.('timeZone') || [];
   $('#tz-list').innerHTML = zones.map((z) => `<option value="${z}"></option>`).join('');
@@ -309,9 +402,13 @@ $('#settings-form').addEventListener('submit', async (e) => {
     trackFrom,
     dailyReminder: f.get('dailyReminder') === 'on',
     reminderHour: Number(f.get('reminderHour')),
+    dayStartHour: Number(f.get('dayStartHour')),
     theme: String(f.get('theme')),
   });
 
+  // Re-file before pruning: `resetHistoryFrom` compares day keys, and they have
+  // to mean the same thing on both sides of the cutoff.
+  await syncDayWindow().catch(() => {});
   if (trackFrom && trackFrom !== prevFrom) await resetHistoryFrom(trackFrom);
   await load();
 });

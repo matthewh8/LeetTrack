@@ -21,8 +21,9 @@ import { dayKey } from './time.js';
  * @param {{problems:Object, attempts:Array, days:Object, reviews:Object}} state
  * @param {string} fromKey  inclusive "YYYY-MM-DD" start of the kept range
  * @param {string} timeZone IANA zone the day keys were recorded in
+ * @param {number} [dayStartHour] hour the day rolls over at, for rows missing a key
  */
-export function pruneState(state, fromKey, timeZone) {
+export function pruneState(state, fromKey, timeZone, dayStartHour = 0) {
   const before = {
     attempts: (state.attempts || []).length,
     days: Object.keys(state.days || {}).length,
@@ -30,7 +31,8 @@ export function pruneState(state, fromKey, timeZone) {
     reviews: Object.keys(state.reviews || {}).length,
   };
 
-  const attempts = (state.attempts || []).filter((a) => keyOfAttempt(a, timeZone) >= fromKey);
+  const attempts = (state.attempts || [])
+    .filter((a) => keyOfAttempt(a, timeZone, dayStartHour) >= fromKey);
   const days = Object.fromEntries(
     Object.entries(state.days || {}).filter(([key]) => key >= fromKey),
   );
@@ -55,7 +57,8 @@ export function pruneState(state, fromKey, timeZone) {
     // No surviving attempt row is not the same as no surviving solve: attempts
     // are capped at 5000 and sync-only solves predate their own rollup. Fall
     // back to the problem's own last-solved stamp.
-    const solvedInRange = evidence || (p.lastSolvedAt && dayKey(new Date(p.lastSolvedAt), timeZone) >= fromKey);
+    const solvedInRange = evidence
+      || (p.lastSolvedAt && dayKey(new Date(p.lastSolvedAt), timeZone, dayStartHour) >= fromKey);
     if (!solvedInRange) continue;
 
     const lastSolvedAt = Math.max(p.lastSolvedAt || 0, evidence?.last || 0);
@@ -84,12 +87,12 @@ export function pruneState(state, fromKey, timeZone) {
 
 // `day` is written at record time in the timezone that was active then; only
 // fall back to recomputing it when an older row is missing one.
-function keyOfAttempt(attempt, timeZone) {
-  return attempt.day || dayKey(new Date(attempt.at), timeZone);
+function keyOfAttempt(attempt, timeZone, dayStartHour) {
+  return attempt.day || dayKey(new Date(attempt.at), timeZone, dayStartHour);
 }
 
 /** True when anything in `state` predates `fromKey` — i.e. a prune would bite. */
-export function hasHistoryBefore(state, fromKey, timeZone) {
-  const { removed } = pruneState(state, fromKey, timeZone);
+export function hasHistoryBefore(state, fromKey, timeZone, dayStartHour = 0) {
+  const { removed } = pruneState(state, fromKey, timeZone, dayStartHour);
   return Object.values(removed).some((n) => n > 0);
 }

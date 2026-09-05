@@ -8,6 +8,16 @@ import { addDays } from './time.js';
 
 export const DEFAULT_INTERVALS = [1, 3, 7, 14, 30, 60, 120];
 
+/** Delay presets offered in the UI, alongside a free-text number of days. */
+export const DELAY_PRESETS = [
+  { days: 1, label: 'Tomorrow' },
+  { days: 2, label: 'In 2 days' },
+  { days: 3, label: 'In 3 days' },
+  { days: 7, label: 'In a week' },
+];
+
+const MAX_DELAY = 3650;
+
 export function intervalAt(intervals, stage) {
   const list = intervals && intervals.length ? intervals : DEFAULT_INTERVALS;
   return list[Math.min(Math.max(stage, 0), list.length - 1)];
@@ -19,35 +29,108 @@ export function scheduleFirst(slug, todayK, intervals) {
     stage: 0,
     dueOn: addDays(todayK, intervalAt(intervals, 0)),
     lastReviewedAt: null,
+    needsReview: false,
     history: [],
   };
 }
 
+/** Whole days for a delay, or null when the input isn't usable. */
+export function normaliseDelay(value) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_DELAY) : null;
+}
+
+// Pushing is always measured from whichever is later, today or the existing due
+// date. Anchoring on today alone would let "delay a day" on something due next
+// week pull it *forward* to tomorrow.
+function pushFrom(review, todayK) {
+  return review.dueOn && review.dueOn > todayK ? review.dueOn : todayK;
+}
+
 /**
  * `done`   -> graduate to the next interval
- * `snooze` -> push a day, keep the stage (didn't get to it, didn't fail it)
  * `again`  -> forgot it; back to stage 0
+ * `delay`  -> not today; push `opts.days` (default 1) without touching the stage
+ * `snooze` -> `delay` by a single day, kept as its own name for the UI
+ * `skip`   -> skip this cycle: push a whole interval at the current stage,
+ *             which is not the same as reviewing it — the stage doesn't move
+ *             and it doesn't count as reviewed
+ * `flag` / `unflag` -> mark "needs review", which surfaces it in the queue
+ *             regardless of its due date
+ *
+ * @param {object} review
+ * @param {'done'|'again'|'delay'|'snooze'|'skip'|'flag'|'unflag'} action
+ * @param {string} todayK
+ * @param {number[]} intervals
+ * @param {{days?:number}} [opts]
  */
-export function applyReview(review, action, todayK, intervals) {
-  const history = [...(review.history || []), { action, on: todayK }].slice(-50);
+export function applyReview(review, action, todayK, intervals, opts = {}) {
+  const log = (entry) => [...(review.history || []), { on: todayK, ...entry }].slice(-50);
 
   if (action === 'done') {
     const stage = review.stage + 1;
-    return { ...review, stage, dueOn: addDays(todayK, intervalAt(intervals, stage)), lastReviewedAt: todayK, history };
+    return {
+      ...review,
+      stage,
+      dueOn: addDays(todayK, intervalAt(intervals, stage)),
+      lastReviewedAt: todayK,
+      needsReview: false,
+      history: log({ action }),
+    };
   }
-  if (action === 'snooze') {
-    return { ...review, dueOn: addDays(todayK, 1), history };
-  }
+
   if (action === 'again') {
-    return { ...review, stage: 0, dueOn: addDays(todayK, intervalAt(intervals, 0)), lastReviewedAt: todayK, history };
+    return {
+      ...review,
+      stage: 0,
+      dueOn: addDays(todayK, intervalAt(intervals, 0)),
+      lastReviewedAt: todayK,
+      needsReview: false,
+      history: log({ action }),
+    };
   }
+
+  if (action === 'delay' || action === 'snooze') {
+    const days = normaliseDelay(opts.days ?? 1) ?? 1;
+    return {
+      ...review,
+      dueOn: addDays(pushFrom(review, todayK), days),
+      history: log({ action: 'delay', days }),
+    };
+  }
+
+  if (action === 'skip') {
+    const days = intervalAt(intervals, review.stage);
+    return {
+      ...review,
+      dueOn: addDays(pushFrom(review, todayK), days),
+      history: log({ action, days }),
+    };
+  }
+
+  if (action === 'flag' || action === 'unflag') {
+    return { ...review, needsReview: action === 'flag', history: log({ action }) };
+  }
+
   return review;
 }
 
-/** Everything due on or before `key` — overdue items included, oldest first. */
+/**
+ * The queue: everything due on or before `key`, plus anything flagged as
+ * needing review whatever its due date. Flagged first, then oldest due first.
+ */
 export function dueBy(reviews, key) {
   return Object.values(reviews)
-    .filter((r) => r.dueOn <= key)
+    .filter((r) => r.dueOn <= key || r.needsReview)
+    .sort((a, b) =>
+      Number(!!b.needsReview) - Number(!!a.needsReview)
+      || a.dueOn.localeCompare(b.dueOn)
+      || a.slug.localeCompare(b.slug));
+}
+
+export function flaggedReviews(reviews) {
+  return Object.values(reviews)
+    .filter((r) => r.needsReview)
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.slug.localeCompare(b.slug));
 }
 
@@ -64,7 +147,7 @@ export function parseIntervals(text) {
   const list = String(text)
     .split(',')
     .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0 && n <= 3650)
+    .filter((n) => Number.isFinite(n) && n > 0 && n <= MAX_DELAY)
     .map((n) => Math.round(n));
   return list.length ? [...new Set(list)].sort((a, b) => a - b) : DEFAULT_INTERVALS;
 }

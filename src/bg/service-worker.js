@@ -1,6 +1,8 @@
 // Coordinates capture, backfill, and reminders.
 
-import { recordSubmission, enrichProblem, readAll, getSettings, patchMeta, reviewAction } from '../lib/storage.js';
+import {
+  recordSubmission, enrichProblem, readAll, getSettings, patchMeta, reviewAction, syncDayWindow,
+} from '../lib/storage.js';
 import { HOSTS, fetchUserStatus, fetchRecentAccepted, fetchQuestion } from '../lib/leetcode-api.js';
 import { dayKey } from '../lib/time.js';
 import { dueBy } from '../lib/scheduler.js';
@@ -11,11 +13,15 @@ const REMINDER_ALARM = 'leettrack:reminder';
 
 chrome.runtime.onInstalled.addListener(async () => {
   await patchMeta({ installedAt: Date.now() });
+  // An upgrade lands here too: history recorded under the old midnight
+  // boundary gets re-filed once, before anything reads it.
+  await syncDayWindow().catch(() => {});
   await scheduleAlarms();
   syncRecent().catch(() => {});
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
+  await syncDayWindow().catch(() => {});
   scheduleAlarms().catch(() => {});
 });
 
@@ -49,7 +55,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       if (msg?.type === 'leettrack:review') {
-        const next = await reviewAction(msg.slug, msg.action);
+        const next = await reviewAction(msg.slug, msg.action, msg.opts || {});
         sendResponse({ ok: true, review: next });
         return;
       }
@@ -84,6 +90,7 @@ async function enrichFromGraphQL(slug, host) {
  * degrades the extension rather than breaking it.
  */
 async function syncRecent() {
+  await syncDayWindow().catch(() => {});
   const { meta } = await readAll();
   const base = hostForUser(meta);
 
@@ -135,7 +142,7 @@ async function maybeRemind() {
   );
   if (hourHere !== settings.reminderHour) return;
 
-  const today = dayKey(now, settings.timezone);
+  const today = dayKey(now, settings.timezone, settings.dayStartHour);
   const { meta, days, reviews } = await readAll();
   if (meta.lastReminderOn === today) return; // once a day
 

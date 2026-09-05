@@ -99,11 +99,55 @@ main { padding-bottom: 56px; }
 .q-title:hover { text-decoration: underline; }
 .q-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .q-actions { display: flex; gap: 6px; flex: none; }
+.q-actions .btn { flex: none; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
 .tag[data-d="Easy"] { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .tag[data-d="Medium"] { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
 .tag[data-d="Hard"] { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 40%, transparent); }
 .overdue { color: var(--critical); }
+
+/* "Needs review" is a manual override of the schedule, so it reads as a state
+   on the row rather than another due date: a label, plus a filled star on the
+   toggle that set it. Never colour alone — the word is always there. */
+.flagged {
+  flex: none; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-wash); color: var(--accent); border: 1px solid transparent;
+}
+.q-item[data-flagged="1"] { background: linear-gradient(90deg, var(--accent-wash), transparent 55%); }
+.btn-flag { line-height: 1; padding: 4px 7px; color: var(--muted); }
+.btn-flag[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.r-item .btn-flag { flex: none; }
+
+/* ---- delay menu ---- */
+.menu { position: relative; }
+.menu > summary {
+  list-style: none; display: inline-flex; align-items: center; gap: 4px; user-select: none;
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary::after { content: "\25be"; font-size: 10px; color: var(--muted); }
+.menu[open] > summary { background: var(--surface-2); }
+.menu-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 208px;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+.menu-h { margin: 0 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.menu-item {
+  font: inherit; font-size: 13px; text-align: left; padding: 6px 8px; border: 0;
+  border-radius: var(--r-sm); background: none; color: var(--text-1); cursor: pointer;
+}
+.menu-item:hover { background: var(--surface-2); }
+.menu-item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.menu-hint { display: block; font-size: 11px; color: var(--muted); }
+.menu-row { display: flex; gap: 6px; padding: 4px 8px 2px; }
+.menu-row input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 4px 7px;
+  border-radius: var(--r-sm); border: 1px solid var(--axis);
+  background: var(--plane); color: var(--text-1);
+}
+.menu-row input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-color: var(--accent); }
+.menu-sep { border: 0; border-top: 1px solid var(--border); margin: 6px 0 2px; width: 100%; }
 
 /* ---- patterns ---- */
 .patterns { padding: 12px 18px 0; }
@@ -134,7 +178,9 @@ main { padding-bottom: 56px; }
 .linkish { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; text-decoration: underline; }
 
 /* ---- settings sheet ---- */
-.sheet { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0; background: var(--surface); color: var(--text-1); width: min(440px, 92vw); box-shadow: 0 12px 48px rgba(0,0,0,.28); }
+/* Taller than a short laptop viewport once every field is in, so the sheet
+   scrolls itself — Save must never sit below the fold with no way to reach it. */
+.sheet { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0; background: var(--surface); color: var(--text-1); width: min(440px, 92vw); max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 48px rgba(0,0,0,.28); }
 .sheet::backdrop { background: rgba(0, 0, 0, 0.42); }
 .sheet-in { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
 .sheet h2 { font-size: 17px; }
@@ -147,7 +193,14 @@ main { padding-bottom: 56px; }
   border: 1px solid var(--axis); background: var(--plane); color: var(--text-1);
 }
 .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-color: var(--accent); }
-.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* Pinned to the bottom of the scrollport so Save is reachable however tall the
+   form grows or however short the window is. */
+.sheet-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  position: sticky; bottom: 0; z-index: 1;
+  margin: 0 -22px -22px; padding: 12px 22px;
+  background: var(--surface); border-top: 1px solid var(--border);
+}
 .sheet-msg { margin: 0; font-size: 12px; color: var(--critical); min-height: 16px; }
 
 @media (max-width: 900px) {
@@ -164,7 +217,9 @@ main, .card, .block, .stat { min-width: 0; }
 .topbar-actions { flex: 0 0 auto; }
 
 @media (max-width: 620px) {
-    .q-item { flex-wrap: wrap; }
+  .q-item { flex-wrap: wrap; }
   .q-actions { width: 100%; }
+  .menu { position: static; }
+  .menu-pop { right: 8px; left: 8px; width: auto; }
   .stat-meta { gap: 16px; }
 }

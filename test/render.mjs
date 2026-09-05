@@ -103,16 +103,25 @@ for (let i = 181; i >= 0; i -= 1) {
 const solvedSlugs = Object.keys(problems);
 const dueOffsets = [-3, -1, 0, 0, 1, 2, 4, 6, 9, 13, 18, 24];
 solvedSlugs.slice(0, dueOffsets.length).forEach((slug, i) => {
-  reviews[slug] = { slug, stage: i % 4, dueOn: shift(today, dueOffsets[i]), lastReviewedAt: null, history: [] };
+  reviews[slug] = { slug, stage: i % 4, dueOn: shift(today, dueOffsets[i]), lastReviewedAt: null, needsReview: false, history: [] };
 });
+// One problem marked "needs review" by hand: it is due weeks out but still has
+// to show at the top of today's queue.
+if (solvedSlugs[10]) reviews[solvedSlugs[10]].needsReview = true;
 
 const fixture = {
-  'leettrack:v1:meta': { schemaVersion: 1, username: 'matthewh8', host: 'leetcode.com', signedIn: true, lastSyncAt: Date.now() - 3600e3 },
+  'leettrack:v1:meta': {
+    schemaVersion: 1, username: 'matthewh8', host: 'leetcode.com', signedIn: true,
+    lastSyncAt: Date.now() - 3600e3, dayWindowHour: 2, dayWindowTz: TZ,
+  },
   'leettrack:v1:problems': problems,
   'leettrack:v1:attempts': attempts.slice(-5000),
   'leettrack:v1:days': days,
   'leettrack:v1:reviews': reviews,
-  'leettrack:v1:settings': { timezone: TZ, intervals: [1, 3, 7, 14, 30, 60, 120], dailyReminder: true, reminderHour: 20, theme: 'system' },
+  'leettrack:v1:settings': {
+    timezone: TZ, intervals: [1, 3, 7, 14, 30, 60, 120],
+    dailyReminder: true, reminderHour: 20, dayStartHour: 2, theme: 'system',
+  },
 };
 
 // ---------- render ----------
@@ -174,6 +183,7 @@ await shot('src/ui/dashboard.html', 'dashboard-light.png', { width: 1280, height
 await shot('src/ui/dashboard.html', 'dashboard-dark.png', { width: 1280, height: 1400, dark: true, full: true });
 await shot('src/ui/dashboard.html', 'dashboard-narrow.png', { width: 560, height: 1000, dark: false, full: true });
 await shot('src/ui/dashboard.html', 'settings.png', { width: 900, height: 760, dark: false, open: '#btn-settings' });
+await shot('src/ui/dashboard.html', 'delay-menu.png', { width: 900, height: 900, dark: true, open: '.q-item .menu > summary' });
 await shot('src/ui/popup.html', 'popup-dark.png', { width: 340, height: 300, dark: true });
 
 await browser.close();
@@ -183,4 +193,4 @@ if (errors.length) {
   console.error('Render problems:\n' + errors.map((e) => `  - ${e}`).join('\n'));
   process.exit(1);
 }
-console.log(`rendered 5 screenshots into ${OUT}`);
+console.log(`rendered 6 screenshots into ${OUT}`);

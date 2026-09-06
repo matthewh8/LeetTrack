@@ -22,7 +22,7 @@ globalThis.chrome = {
 
 const {
   KEYS, readAll, saveSettings, syncDayWindow, recordSubmission, reviewAction, setNeedsReview,
-  defaultSettings,
+  setRetired, defaultSettings,
 } = await import('../src/lib/storage.js');
 
 // 01:30 local on Sep 3 in LA.
@@ -139,4 +139,60 @@ test('flagging a problem that has no review row schedules one', async () => {
 test('flagging something never solved does nothing', async () => {
   seedMidnightHistory();
   assert.equal(await setNeedsReview('not-a-problem', true), null);
+});
+
+test('removing a problem from review keeps it as practised', async () => {
+  seedMidnightHistory();
+  await syncDayWindow();
+  store[KEYS.reviews] = {
+    'two-sum': { slug: 'two-sum', stage: 1, dueOn: '2026-09-02', lastReviewedAt: null, history: [] },
+  };
+
+  const retired = await setRetired('two-sum', true);
+  assert.equal(retired.retired, true);
+
+  const { problems, reviews, days } = await readAll();
+  // Off the schedule...
+  assert.equal(reviews['two-sum'].retired, true);
+  // ...but still solved, still in the rollup, still in the history.
+  assert.equal(problems['two-sum'].solveCount, 1);
+  assert.equal(days['2026-09-02'].solved, 2);
+});
+
+test('re-solving a removed problem does not put it back on the schedule', async () => {
+  seedMidnightHistory();
+  await syncDayWindow();
+  store[KEYS.reviews] = {
+    'two-sum': { slug: 'two-sum', stage: 1, dueOn: '2026-09-02', lastReviewedAt: null, history: [] },
+  };
+  await setRetired('two-sum', true);
+
+  // The whole reason the row is kept rather than deleted: `recordSubmission`
+  // only schedules a problem it has never seen.
+  await recordSubmission({
+    id: 'again-1', slug: 'two-sum', at: Date.parse('2026-09-10T20:00:00Z'),
+    verdict: 'Accepted', source: 'test',
+  });
+
+  const { reviews, problems } = await readAll();
+  assert.equal(reviews['two-sum'].retired, true);
+  assert.equal(problems['two-sum'].solveCount, 2);
+});
+
+test('restore puts it back and the round trip is stable', async () => {
+  seedMidnightHistory();
+  await syncDayWindow();
+  store[KEYS.reviews] = {
+    'two-sum': { slug: 'two-sum', stage: 1, dueOn: '2026-09-02', lastReviewedAt: null, history: [] },
+  };
+  await setRetired('two-sum', true);
+  const back = await setRetired('two-sum', false);
+  assert.equal(back.retired, false);
+  assert.equal(back.stage, 1);
+  assert.equal((await readAll()).reviews['two-sum'].retired, false);
+});
+
+test('removing something never solved does nothing', async () => {
+  seedMidnightHistory();
+  assert.equal(await setRetired('not-a-problem', true), null);
 });

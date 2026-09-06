@@ -28,6 +28,11 @@ using the session you're already signed in with.
 - **Needs review** — a star on any problem, in the queue or in recent solves,
   that pulls it to the top of the queue whatever its due date says. For the ones
   you technically solved but couldn't explain a week later.
+- **Remove from review** — take a problem off the schedule for good. It
+  disappears from the queue and the calendar but stays in your solved count,
+  your heatmap, and your patterns: it was still practised, it just doesn't need
+  asking about again. Listed under `Removed from review` with a one-click
+  restore, so removed never means deleted.
 - **Patterns** — which techniques you've actually practised, ranked. LeetCode
   tags every problem, but its tags mix the *technique* that solves it (Sliding
   Window, Monotonic Stack) with the *container* it happens to use (Array, String,
@@ -91,8 +96,8 @@ Playwright is a dev dependency used only by the render harness.
 ## Development
 
 ```bash
-npm test        # 83 unit tests: day boundaries and windows, streaks, scheduling,
-                #   stats, pruning, and the day-window migration
+npm test        # 92 unit tests: day boundaries and windows, streaks, scheduling,
+                #   retiring, stats, pruning, and the day-window migration
 npm run check   # manifest refs resolve; lib/ stays free of chrome.*
 npm run render  # screenshots the dashboard light/dark/narrow into shots/
 ```
@@ -107,6 +112,21 @@ Unit tests, static checks, and the render harness all pass. **The two capture
 paths are not yet verified against live LeetCode** — that needs a signed-in
 session, which the development container doesn't have. Load the extension
 unpacked and submit one problem to confirm end-to-end.
+
+## Layout
+
+Reviews are the only thing on the dashboard you *act* on, so they get the whole
+top of the page: the month calendar on the left, today's queue on the right of
+it. Everything else — streak, solved counts, heatmap, patterns, recent solves —
+is a read-out and sits below. A long overdue pile is capped at ten rows behind a
+`Show all` so it can't push the rest of the page out of reach.
+
+Removing a problem from review marks the row `retired` rather than deleting it.
+`recordSubmission` only schedules a problem it has never seen, so a deleted
+review would quietly come back the next time you solved that problem — the
+tombstone is what makes "remove" stick. Everything that reads the schedule
+(`dueBy`, the calendar counts, the reminder) filters retired rows out; nothing
+that counts practice does.
 
 ## The day window
 

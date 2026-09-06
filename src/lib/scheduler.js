@@ -57,6 +57,9 @@ function pushFrom(review, todayK) {
  *             and it doesn't count as reviewed
  * `flag` / `unflag` -> mark "needs review", which surfaces it in the queue
  *             regardless of its due date
+ * `retire` -> stop scheduling it: off the calendar and out of the queue, but
+ *             still solved and still counted everywhere else
+ * `restore` -> put it back on the schedule
  *
  * @param {object} review
  * @param {'done'|'again'|'delay'|'snooze'|'skip'|'flag'|'unflag'} action
@@ -112,7 +115,35 @@ export function applyReview(review, action, todayK, intervals, opts = {}) {
     return { ...review, needsReview: action === 'flag', history: log({ action }) };
   }
 
+  if (action === 'retire') {
+    // The flag goes with it — a retired problem must not jump a queue it is no
+    // longer part of, and un-retiring it later shouldn't spring a surprise.
+    return { ...review, retired: true, needsReview: false, history: log({ action }) };
+  }
+
+  if (action === 'restore') {
+    return {
+      ...review,
+      retired: false,
+      // Back on the schedule, not back in a hole: a due date that went stale
+      // while it was off the calendar becomes today rather than months overdue.
+      dueOn: pushFrom(review, todayK),
+      history: log({ action }),
+    };
+  }
+
   return review;
+}
+
+/** Reviews still on the schedule. A retired one stays stored, just not counted. */
+export function activeReviews(reviews) {
+  return Object.values(reviews).filter((r) => !r.retired);
+}
+
+export function retiredReviews(reviews) {
+  return Object.values(reviews)
+    .filter((r) => r.retired)
+    .sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 /**
@@ -120,7 +151,7 @@ export function applyReview(review, action, todayK, intervals, opts = {}) {
  * needing review whatever its due date. Flagged first, then oldest due first.
  */
 export function dueBy(reviews, key) {
-  return Object.values(reviews)
+  return activeReviews(reviews)
     .filter((r) => r.dueOn <= key || r.needsReview)
     .sort((a, b) =>
       Number(!!b.needsReview) - Number(!!a.needsReview)
@@ -129,7 +160,7 @@ export function dueBy(reviews, key) {
 }
 
 export function flaggedReviews(reviews) {
-  return Object.values(reviews)
+  return activeReviews(reviews)
     .filter((r) => r.needsReview)
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.slug.localeCompare(b.slug));
 }
@@ -137,7 +168,7 @@ export function flaggedReviews(reviews) {
 /** { "YYYY-MM-DD": count } of items scheduled exactly on each day. */
 export function dueCountsByDay(reviews) {
   const out = {};
-  for (const r of Object.values(reviews)) {
+  for (const r of activeReviews(reviews)) {
     out[r.dueOn] = (out[r.dueOn] || 0) + 1;
   }
   return out;

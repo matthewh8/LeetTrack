@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_INTERVALS, intervalAt, scheduleFirst, applyReview, dueBy, dueCountsByDay, parseIntervals,
-  flaggedReviews, normaliseDelay,
+  flaggedReviews, normaliseDelay, activeReviews, retiredReviews,
 } from '../src/lib/scheduler.js';
 
 const I = DEFAULT_INTERVALS; // 1,3,7,14,30,60,120
@@ -171,4 +171,49 @@ test('reviewing a flagged problem clears the flag', () => {
 test('an unknown action is a no-op', () => {
   const r0 = { slug: 'x', stage: 1, dueOn: '2026-09-02', history: [] };
   assert.equal(applyReview(r0, 'nope', '2026-09-02', I), r0);
+});
+
+test('retiring takes a problem off the schedule without deleting it', () => {
+  const r0 = { slug: 'two-sum', stage: 3, dueOn: '2026-09-02', history: [] };
+  const r = applyReview(r0, 'retire', '2026-09-02', I);
+
+  assert.equal(r.retired, true);
+  assert.equal(r.stage, 3);       // everything it learned is kept
+  assert.equal(r.dueOn, '2026-09-02');
+
+  const reviews = { 'two-sum': r, other: { slug: 'other', dueOn: '2026-09-02', stage: 0 } };
+  assert.deepEqual(dueBy(reviews, '2026-09-02').map((x) => x.slug), ['other']);
+  assert.deepEqual(dueCountsByDay(reviews), { '2026-09-02': 1 });
+  assert.deepEqual(activeReviews(reviews).map((x) => x.slug), ['other']);
+  assert.deepEqual(retiredReviews(reviews).map((x) => x.slug), ['two-sum']);
+});
+
+test('retiring clears the needs-review mark', () => {
+  const flagged = applyReview({ slug: 'x', stage: 0, dueOn: '2026-12-01', history: [] }, 'flag', '2026-09-02', I);
+  const retired = applyReview(flagged, 'retire', '2026-09-02', I);
+  assert.equal(retired.needsReview, false);
+  // A flag must not drag a retired problem back into the queue.
+  assert.deepEqual(dueBy({ x: retired }, '2026-09-02'), []);
+  assert.deepEqual(flaggedReviews({ x: retired }), []);
+});
+
+test('restoring a long-retired problem brings it back due today, not months overdue', () => {
+  const retired = applyReview({ slug: 'x', stage: 2, dueOn: '2026-01-05', history: [] }, 'retire', '2026-01-05', I);
+  const back = applyReview(retired, 'restore', '2026-09-02', I);
+  assert.equal(back.retired, false);
+  assert.equal(back.dueOn, '2026-09-02');
+  assert.equal(back.stage, 2);
+});
+
+test('restoring keeps a due date that is still in the future', () => {
+  const retired = applyReview({ slug: 'x', stage: 2, dueOn: '2026-10-01', history: [] }, 'retire', '2026-09-02', I);
+  assert.equal(applyReview(retired, 'restore', '2026-09-02', I).dueOn, '2026-10-01');
+});
+
+test('a retired problem stays off the calendar until it is restored', () => {
+  const retired = applyReview({ slug: 'x', stage: 1, dueOn: '2026-09-02', history: [] }, 'retire', '2026-09-02', I);
+  // Delaying or skipping one doesn't quietly put it back on the schedule.
+  assert.equal(applyReview(retired, 'delay', '2026-09-02', I, { days: 3 }).retired, true);
+  assert.equal(applyReview(retired, 'skip', '2026-09-02', I).retired, true);
+  assert.equal(applyReview(retired, 'done', '2026-09-02', I).retired, true);
 });

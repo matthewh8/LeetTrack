@@ -108,6 +108,10 @@ solvedSlugs.slice(0, dueOffsets.length).forEach((slug, i) => {
 // One problem marked "needs review" by hand: it is due weeks out but still has
 // to show at the top of today's queue.
 if (solvedSlugs[10]) reviews[solvedSlugs[10]].needsReview = true;
+// Two taken off the schedule entirely — still solved, just not scheduled.
+solvedSlugs.slice(12, 14).forEach((slug, i) => {
+  reviews[slug] = { slug, stage: 2, dueOn: shift(today, -40 + i), lastReviewedAt: null, retired: true, history: [] };
+});
 
 const fixture = {
   'leettrack:v1:meta': {
@@ -183,7 +187,7 @@ await shot('src/ui/dashboard.html', 'dashboard-light.png', { width: 1280, height
 await shot('src/ui/dashboard.html', 'dashboard-dark.png', { width: 1280, height: 1400, dark: true, full: true });
 await shot('src/ui/dashboard.html', 'dashboard-narrow.png', { width: 560, height: 1000, dark: false, full: true });
 await shot('src/ui/dashboard.html', 'settings.png', { width: 900, height: 760, dark: false, open: '#btn-settings' });
-await shot('src/ui/dashboard.html', 'delay-menu.png', { width: 900, height: 900, dark: true, open: '.q-item .menu > summary' });
+await shot('src/ui/dashboard.html', 'row-menu.png', { width: 1100, height: 900, dark: true, open: '.q-item .menu > summary' });
 await shot('src/ui/popup.html', 'popup-dark.png', { width: 340, height: 300, dark: true });
 
 await browser.close();

@@ -219,6 +219,23 @@ export async function setNeedsReview(slug, on) {
 }
 
 /**
+ * Take a problem off the review schedule, or put it back. The row is kept
+ * rather than deleted: `recordSubmission` only schedules a problem it has
+ * never seen, so deleting the review would quietly resurrect it the next time
+ * the problem was solved. The problem itself stays in every other count — it
+ * was still practised.
+ */
+export async function setRetired(slug, on) {
+  const { reviews, problems, settings } = await readAll();
+  if (!reviews[slug] && !problems[slug]) return null;
+  const today = dayKey(new Date(), settings.timezone, settings.dayStartHour);
+  const review = reviews[slug] || scheduleFirst(slug, today, settings.intervals);
+  const next = applyReview(review, on ? 'retire' : 'restore', today, settings.intervals);
+  await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
+  return next;
+}
+
+/**
  * Re-file history when the day window (or timezone) changed since it was
  * recorded. Cheap and idempotent: the applied window is stamped in meta, so
  * this is a two-key read and nothing else on every call but the first.

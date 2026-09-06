@@ -11,7 +11,7 @@
 main { padding-bottom: 56px; }
 
 /* ---- hero ---- */
-.hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px 0 16px; }
+.hero { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 0 0 16px; }
 .stat { display: flex; flex-direction: column; padding-bottom: 16px; }
 .stat-body { display: flex; align-items: baseline; gap: 8px; padding: 6px 18px 0; }
 .figure { margin: 0; font-size: 46px; line-height: 1.05; font-weight: 600; letter-spacing: -0.03em; }
@@ -21,7 +21,6 @@ main { padding-bottom: 56px; }
 .stat-meta div { display: flex; flex-direction: column; gap: 2px; }
 .stat-meta dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .stat-meta dd { margin: 0; font-size: 16px; font-weight: 600; }
-#due-card .btn-primary { margin: 12px 18px 0; align-self: flex-start; }
 
 /* Difficulty: a proportional bar, but the counts are always spelled out —
    green/amber/red are not separable under deuteranopia. */
@@ -66,8 +65,20 @@ main { padding-bottom: 56px; }
 .hm-legend span:last-child { margin-left: 3px; }
 .hm-legend i { width: 11px; height: 11px; aspect-ratio: auto; }
 
+/* ---- reviews (the top widget) ---- */
+.rev-card { margin: 24px 0 16px; }
+/* The calendar is a fixed-ish 7-column grid; the queue takes whatever is left,
+   which is where the long problem titles need the room. */
+.rev-split { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 8px 24px; }
+.rev-side { display: flex; flex-direction: column; min-width: 0; padding: 14px 18px 0 0; }
+.rev-summary { display: flex; align-items: baseline; gap: 12px; }
+.rev-summary .figure { font-size: 40px; }
+.rev-summary-txt { min-width: 0; }
+.rev-summary .figure-unit { margin: 0; }
+.rev-summary .stat-sub { margin: 2px 0 0; }
+
 /* ---- calendar ---- */
-.cal { padding: 14px 18px 0; }
+.cal { padding: 14px 0 0 18px; }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .cal-head strong { font-size: 14px; }
 .cal-nav-right { display: flex; gap: 6px; }
@@ -90,7 +101,7 @@ main { padding-bottom: 56px; }
 .cal-day[data-selected="1"] .cal-badge { background: var(--accent-ink); color: var(--accent); }
 
 /* ---- review queue ---- */
-.queue { padding: 16px 18px 0; }
+.queue { padding: 14px 0 0; }
 .queue h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-2); margin-bottom: 8px; }
 .q-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
 .q-item:first-of-type { border-top: 0; }
@@ -140,6 +151,8 @@ main { padding-bottom: 56px; }
 .menu-item:hover { background: var(--surface-2); }
 .menu-item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .menu-hint { display: block; font-size: 11px; color: var(--muted); }
+.menu-item[data-act="retire"] { color: var(--critical); }
+.menu-item[data-act="retire"] .menu-hint { color: var(--muted); }
 .menu-row { display: flex; gap: 6px; padding: 4px 8px 2px; }
 .menu-row input {
   flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 4px 7px;
@@ -148,6 +161,23 @@ main { padding-bottom: 56px; }
 }
 .menu-row input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-color: var(--accent); }
 .menu-sep { border: 0; border-top: 1px solid var(--border); margin: 6px 0 2px; width: 100%; }
+
+/* ---- removed from review ---- */
+.retired-box { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.retired-box > summary {
+  list-style: none; cursor: pointer; font-size: 12px; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.retired-box > summary::-webkit-details-marker { display: none; }
+.retired-box > summary::before { content: "\25b8"; font-size: 9px; }
+.retired-box[open] > summary::before { content: "\25be"; }
+.retired-box > summary:hover { color: var(--text-2); }
+.retired-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); }
+.retired-item:first-of-type { border-top: 0; margin-top: 6px; }
+.retired-title { flex: 1; min-width: 0; font-size: 13px; color: var(--text-2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.retired-title:hover { text-decoration: underline; color: var(--text-1); }
+.retired-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.q-more { margin: 10px 0 0; }
 
 /* ---- patterns ---- */
 .patterns { padding: 12px 18px 0; }
@@ -204,7 +234,9 @@ main { padding-bottom: 56px; }
 .sheet-msg { margin: 0; font-size: 12px; color: var(--critical); min-height: 16px; }
 
 @media (max-width: 900px) {
-  .hero, .two-col { grid-template-columns: 1fr; }
+  .hero, .two-col, .rev-split { grid-template-columns: 1fr; }
+  .rev-side { padding: 0 18px; }
+  .cal { padding: 14px 18px 0; }
   .wrap { padding: 0 16px; }
 }
 

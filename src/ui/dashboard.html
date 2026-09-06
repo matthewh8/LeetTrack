@@ -26,6 +26,31 @@
   </header>
 
   <main class="wrap" id="main">
+    <!-- Reviews first and full width: it is the only part of this page you act
+         on. Everything below it is a read-out. -->
+    <section class="card block rev-card" aria-labelledby="rev-h">
+      <div class="card-head">
+        <h2 id="rev-h">Reviews</h2>
+        <span class="note" id="rev-note"></span>
+      </div>
+      <div class="rev-split">
+        <div class="rev-cal">
+          <div id="calendar" class="cal"></div>
+        </div>
+        <div class="rev-side">
+          <div class="rev-summary">
+            <p class="figure tabular" id="due-n">—</p>
+            <div class="rev-summary-txt">
+              <p class="figure-unit">due today</p>
+              <p class="stat-sub" id="due-sub"></p>
+            </div>
+          </div>
+          <div id="queue" class="queue"></div>
+          <div id="retired"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="hero" aria-label="Summary">
       <div class="card stat">
         <div class="card-head"><h2>Current streak</h2></div>
@@ -49,16 +74,6 @@
         <div class="diffbar" id="diffbar" role="img" aria-label="Solved by difficulty"></div>
         <ul class="difflegend" id="difflegend"></ul>
       </div>
-
-      <div class="card stat" id="due-card">
-        <div class="card-head"><h2>Due for review</h2></div>
-        <div class="stat-body">
-          <p class="figure tabular" id="due-n">—</p>
-          <p class="figure-unit">today</p>
-        </div>
-        <p class="stat-sub" id="due-sub"></p>
-        <button class="btn btn-primary" id="btn-review" hidden>Start reviewing</button>
-      </div>
     </section>
 
     <section class="card block" aria-labelledby="hm-h">
@@ -70,16 +85,6 @@
     </section>
 
     <div class="two-col">
-      <section class="card block" aria-labelledby="rev-h">
-        <div class="card-head">
-          <h2 id="rev-h">Reviews</h2>
-          <span class="note" id="rev-note"></span>
-        </div>
-        <div id="calendar" class="cal"></div>
-        <div id="queue" class="queue"></div>
-      </section>
-
-      <div class="col-right">
       <section class="card block" aria-labelledby="pat-h">
         <div class="card-head">
           <h2 id="pat-h">Patterns</h2>
@@ -92,7 +97,6 @@
         <div class="card-head"><h2 id="rs-h">Recent solves</h2></div>
         <div id="recent" class="recent"></div>
       </section>
-      </div>
     </div>
 
     <p class="footnote">

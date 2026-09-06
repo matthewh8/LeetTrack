@@ -1,11 +1,12 @@
 import {
-  readAll, saveSettings, reviewAction, setNeedsReview, syncDayWindow,
+  readAll, saveSettings, reviewAction, setNeedsReview, setRetired, syncDayWindow,
   exportAll, importAll, resetHistoryFrom, normaliseDayKey,
 } from '../lib/storage.js';
 import { todayKey, dayKey, addDays, diffDays, hourLabel } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
 import {
-  dueBy, dueCountsByDay, flaggedReviews, intervalAt, normaliseDelay, DELAY_PRESETS,
+  dueBy, dueCountsByDay, flaggedReviews, retiredReviews, activeReviews,
+  intervalAt, normaliseDelay, DELAY_PRESETS,
 } from '../lib/scheduler.js';
 import { difficultyCounts, recentSolves, DIFFICULTIES } from '../lib/stats.js';
 import { patternsFor, patternCounts } from '../lib/patterns.js';
@@ -16,7 +17,7 @@ import { createTooltip } from './components/tooltip.js';
 const $ = (sel) => document.querySelector(sel);
 const tip = createTooltip();
 
-const view = { month: null, selected: null };
+const view = { month: null, selected: null, showAllQueue: false };
 let state = null;
 
 const problemUrl = (slug, host) => `https://${host || 'leetcode.com'}/problems/${slug}/`;
@@ -105,11 +106,15 @@ function render(today) {
     : due.length
       ? (notes.length ? notes.join(' · ') : 'Scheduled for today')
       : 'Nothing due — next one is later.';
-  const reviewBtn = $('#btn-review');
-  reviewBtn.hidden = due.length === 0;
 
-  const upcoming = Object.values(reviews).filter((r) => r.dueOn > today).sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0];
-  $('#rev-note').textContent = upcoming ? `Next: ${relativeDay(upcoming.dueOn, today)}` : '';
+  const upcoming = activeReviews(reviews)
+    .filter((r) => r.dueOn > today)
+    .sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0];
+  const scheduled = activeReviews(reviews).length;
+  $('#rev-note').textContent = [
+    scheduled ? `${scheduled} on the schedule` : '',
+    upcoming ? `next ${relativeDay(upcoming.dueOn, today)}` : '',
+  ].filter(Boolean).join(' · ');
 
   renderCalendar($('#calendar'), {
     monthKey: view.month,
@@ -121,6 +126,7 @@ function render(today) {
     onMonth: (m) => { view.month = m; render(today); },
   });
   renderQueue(today, counts);
+  renderRetired();
 
   // ---- heatmap ----
   const first = Object.keys(days).sort()[0];
@@ -147,6 +153,7 @@ function render(today) {
           ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
           <span class="r-when">${relativeDay(dayOf(p.lastSolvedAt, state.settings.timezone), today)}</span>
           ${flagButton(reviews[p.slug])}
+          ${recentMenu(reviews[p.slug], settings.intervals)}
         </div>`).join('')
     : '<p class="empty">Solve a problem on LeetCode and it will appear here.</p>';
 
@@ -213,48 +220,77 @@ function flagButton(review) {
     aria-pressed="${on}" aria-label="${label}" title="${label}">${on ? '\u2605' : '\u2606'}</button>`;
 }
 
-function delayMenu(review, intervals) {
+/**
+ * The overflow menu on a queue row: everything that isn't Done or Again.
+ * `compact` drops the scheduling half, for rows that aren't due — there is
+ * nothing to push back, but you may well want the problem off the schedule.
+ */
+function moreMenu(review, intervals, { compact = false } = {}) {
   const cycle = intervalAt(intervals, review.stage);
+  const schedule = `
+    <p class="menu-h">Push it back</p>
+    ${DELAY_PRESETS.map((o) =>
+      `<button type="button" class="menu-item" data-act="delay" data-days="${o.days}">${o.label}</button>`).join('')}
+    <div class="menu-row">
+      <input class="q-days" type="number" min="1" max="3650" step="1" placeholder="days"
+        aria-label="Delay by a number of days">
+      <button type="button" class="btn btn-sm" data-act="delay" data-days="custom">Delay</button>
+    </div>
+    <hr class="menu-sep">
+    <button type="button" class="menu-item" data-act="skip">
+      Skip this cycle <span class="menu-hint">+${cycle}d, stage ${review.stage + 1} kept</span>
+    </button>
+    <hr class="menu-sep">`;
+
   return `
     <details class="menu">
-      <summary class="btn btn-sm">Delay</summary>
+      <summary class="btn btn-sm" aria-label="More actions">More</summary>
       <div class="menu-pop">
-        <p class="menu-h">Push it back</p>
-        ${DELAY_PRESETS.map((o) =>
-          `<button type="button" class="menu-item" data-act="delay" data-days="${o.days}">${o.label}</button>`).join('')}
-        <div class="menu-row">
-          <input class="q-days" type="number" min="1" max="3650" step="1" placeholder="days"
-            aria-label="Delay by a number of days">
-          <button type="button" class="btn btn-sm" data-act="delay" data-days="custom">Delay</button>
-        </div>
-        <hr class="menu-sep">
-        <button type="button" class="menu-item" data-act="skip">
-          Skip this cycle <span class="menu-hint">+${cycle}d, stage ${review.stage + 1} kept</span>
+        ${compact ? '' : schedule}
+        <button type="button" class="menu-item" data-act="retire">
+          Remove from review
+          <span class="menu-hint">Off the calendar. Stays in your solved history.</span>
         </button>
       </div>
     </details>`;
 }
 
+/**
+ * The same menu on a recent solve, where the useful action is "stop asking me
+ * about this one" — you have just seen it and know whether it needs revisiting.
+ */
+function recentMenu(review, intervals) {
+  if (!review) return '';
+  if (review.retired) {
+    return `<button class="btn btn-sm" data-act="restore" title="Put this back on the review schedule">Restore</button>`;
+  }
+  return moreMenu(review, intervals, { compact: true });
+}
+
+const QUEUE_PREVIEW = 10;
+
 function renderQueue(today, counts) {
   const { reviews, problems, settings, meta } = state;
   const showingToday = view.selected === today;
-  const list = showingToday
+  const all = showingToday
     ? dueBy(reviews, today)
-    : Object.values(reviews).filter((r) => r.dueOn === view.selected);
+    : activeReviews(reviews).filter((r) => r.dueOn === view.selected);
 
-  const heading = showingToday
-    ? `Due today${counts[today] ? '' : ''}`
-    : `Scheduled for ${view.selected}`;
+  const heading = showingToday ? 'Due today' : `Scheduled for ${view.selected}`;
 
   const el = $('#queue');
-  if (!list.length) {
+  if (!all.length) {
     el.innerHTML = `<h3>${heading}</h3><p class="empty">${
       showingToday ? 'Nothing due. Enjoy the day off.' : 'Nothing scheduled for this day.'
     }</p>`;
     return;
   }
 
-  el.innerHTML = `<h3>${heading} · ${list.length}</h3>` + list.map((r) => {
+  // A long overdue pile would push the rest of the page out of reach, so only
+  // the first screenful is drawn until asked otherwise.
+  const list = view.showAllQueue ? all : all.slice(0, QUEUE_PREVIEW);
+
+  el.innerHTML = `<h3>${heading} · ${all.length}</h3>` + list.map((r) => {
     const p = problems[r.slug] || { title: r.slug };
     const late = r.dueOn < today;
     const when = late
@@ -270,11 +306,47 @@ function renderQueue(today, counts) {
         <div class="q-actions">
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>
           <button class="btn btn-sm" data-act="again">Again</button>
-          ${delayMenu(r, settings.intervals)}
+          ${moreMenu(r, settings.intervals)}
           ${flagButton(r)}
         </div>
       </div>`;
-  }).join('');
+  }).join('')
+    + (all.length > list.length
+      ? `<p class="q-more"><button class="linkish" id="btn-queue-all">Show all ${all.length}</button></p>`
+      : '');
+
+  const more = $('#btn-queue-all');
+  if (more) more.addEventListener('click', () => { view.showAllQueue = true; render(today); });
+}
+
+/**
+ * Problems taken off the schedule. Kept visible but out of the way: the point
+ * of removing one is not to think about it, and the point of listing them is
+ * that "removed" must never feel like "deleted".
+ */
+function renderRetired() {
+  const { reviews, problems, meta } = state;
+  const list = retiredReviews(reviews);
+  const el = $('#retired');
+
+  if (!list.length) {
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = `
+    <details class="retired-box">
+      <summary>Removed from review · ${list.length}</summary>
+      ${list.map((r) => {
+        const p = problems[r.slug] || { title: r.slug };
+        return `
+          <div class="retired-item" data-slug="${escapeHtml(r.slug)}">
+            <a class="retired-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${escapeHtml(p.title)}</a>
+            <button class="btn btn-sm" data-act="restore">Restore</button>
+          </div>`;
+      }).join('')}
+      <p class="retired-note">Still counted as solved — they just aren't scheduled.</p>
+    </details>`;
 }
 
 /**
@@ -291,6 +363,14 @@ async function runAction(btn) {
   if (action === 'flag' || action === 'unflag') {
     btn.disabled = true;
     await setNeedsReview(slug, action === 'flag');
+    tip.hide();
+    await load();
+    return;
+  }
+
+  if (action === 'retire' || action === 'restore') {
+    btn.disabled = true;
+    await setRetired(slug, action === 'retire');
     tip.hide();
     await load();
     return;
@@ -313,7 +393,7 @@ async function runAction(btn) {
   await load();
 }
 
-for (const sel of ['#queue', '#recent']) {
+for (const sel of ['#queue', '#recent', '#retired']) {
   $(sel).addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
     if (btn) runAction(btn);
@@ -329,10 +409,6 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   for (const menu of document.querySelectorAll('.menu[open]')) menu.open = false;
-});
-
-$('#btn-review').addEventListener('click', () => {
-  $('#queue').scrollIntoView({ behavior: 'smooth', block: 'center' });
 });
 
 $('#btn-sync').addEventListener('click', async (e) => {

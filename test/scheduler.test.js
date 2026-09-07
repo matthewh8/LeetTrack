@@ -5,7 +5,7 @@ import {
   flaggedReviews, normaliseDelay, activeReviews, retiredReviews,
 } from '../src/lib/scheduler.js';
 
-const I = DEFAULT_INTERVALS; // 1,3,7,14,30,60,120
+const I = DEFAULT_INTERVALS; // 1,3,7,14,30,60,120,240,365
 
 test('first solve is due one day later', () => {
   const r = scheduleFirst('two-sum', '2026-09-02', I);
@@ -25,11 +25,18 @@ test('done walks the interval ladder', () => {
 });
 
 test('past the last interval it repeats the longest one', () => {
-  assert.equal(intervalAt(I, 6), 120);
-  assert.equal(intervalAt(I, 99), 120);
-  let r = { slug: 'x', stage: 6, dueOn: '2026-09-02', history: [] };
+  assert.equal(intervalAt(I, I.length - 1), 365);
+  assert.equal(intervalAt(I, 99), 365);
+  let r = { slug: 'x', stage: I.length - 1, dueOn: '2026-09-02', history: [] };
   r = applyReview(r, 'done', '2026-09-02', I);
-  assert.equal(r.dueOn, '2026-12-31'); // +120
+  assert.equal(r.dueOn, '2027-09-02'); // +365, the ladder's last rung repeating
+});
+
+test('the ladder runs past 120 days without inventing rungs beyond a year', () => {
+  assert.deepEqual(I, [1, 3, 7, 14, 30, 60, 120, 240, 365]);
+  // Every rung is longer than the one before it, and none is a fluke of sorting.
+  assert.deepEqual([...I].sort((a, b) => a - b), I);
+  assert.equal(Math.max(...I), 365);
 });
 
 test('snooze pushes a day without advancing the stage', () => {
@@ -74,7 +81,8 @@ test('dueCountsByDay tallies the calendar', () => {
 });
 
 test('parseIntervals sanitises user input', () => {
-  assert.deepEqual(parseIntervals('1,3,7,14,30,60,120'), I);
+  assert.deepEqual(parseIntervals('1,3,7,14,30,60,120,240,365'), I);
+  assert.deepEqual(parseIntervals('1,3,7,14,30,60,120'), [1, 3, 7, 14, 30, 60, 120]);
   assert.deepEqual(parseIntervals(' 7 , 1 ,3 '), [1, 3, 7]);        // sorted
   assert.deepEqual(parseIntervals('1,1,3'), [1, 3]);                 // deduped
   assert.deepEqual(parseIntervals('0,-4,abc,5'), [5]);               // junk dropped
@@ -139,6 +147,44 @@ test('skipping is not the same as done — the ladder does not advance', () => {
   assert.equal(applyReview(r0, 'skip', '2026-09-02', I).dueOn, '2026-09-05');   // +3, stage 1 again
   assert.equal(applyReview(r0, 'done', '2026-09-02', I).stage, 2);
   assert.equal(applyReview(r0, 'done', '2026-09-02', I).dueOn, '2026-09-09');   // +7, stage 2's interval
+});
+
+test('nailing it skips a cycle: two rungs up, one rung of waiting', () => {
+  // Stage 1 is the 3-day rung. Done makes it a 7-day problem due in 7 days;
+  // "nailed it" makes it a 14-day problem — also due in 7, not in 14.
+  const r0 = { slug: 'x', stage: 1, dueOn: '2026-09-02', lastReviewedAt: null, history: [] };
+
+  const done = applyReview(r0, 'done', '2026-09-02', I);
+  assert.equal(done.stage, 2);
+  assert.equal(done.dueOn, '2026-09-09');
+
+  const aced = applyReview(r0, 'ace', '2026-09-02', I);
+  assert.equal(aced.stage, 3);            // the 14-day rung: a whole cycle skipped
+  assert.equal(aced.dueOn, '2026-09-09'); // but the wait is still the 7 it earned
+  assert.equal(aced.lastReviewedAt, '2026-09-02'); // unlike skip, this IS a review
+});
+
+test('acing compounds: the review after the next one is what jumps', () => {
+  let r = { slug: 'x', stage: 1, dueOn: '2026-09-02', history: [] };
+  r = applyReview(r, 'ace', '2026-09-02', I);   // stage 3, due +7
+  r = applyReview(r, 'done', '2026-09-09', I);  // stage 4 -> the 30-day rung
+  assert.equal(r.stage, 4);
+  assert.equal(r.dueOn, '2026-10-09');
+});
+
+test('acing at the top of the ladder stays on the ladder', () => {
+  const r0 = { slug: 'x', stage: I.length - 1, dueOn: '2026-09-02', history: [] };
+  const r = applyReview(r0, 'ace', '2026-09-02', I);
+  assert.equal(r.dueOn, '2027-09-02'); // +365, clamped like every other stage
+  assert.equal(intervalAt(I, r.stage), 365);
+});
+
+test('acing clears the needs-review mark and records itself', () => {
+  const flagged = applyReview({ slug: 'x', stage: 0, dueOn: '2026-09-02', history: [] },
+    'flag', '2026-09-02', I);
+  const aced = applyReview(flagged, 'ace', '2026-09-02', I);
+  assert.equal(aced.needsReview, false);
+  assert.deepEqual(aced.history.at(-1), { on: '2026-09-02', action: 'ace', days: 3 });
 });
 
 test('flagging surfaces a problem in the queue whatever its due date', () => {

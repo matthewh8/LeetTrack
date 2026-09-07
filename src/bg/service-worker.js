@@ -6,7 +6,7 @@ import {
 import { HOSTS, fetchUserStatus, fetchRecentAccepted, fetchQuestion } from '../lib/leetcode-api.js';
 import { dayKey } from '../lib/time.js';
 import { dueBy } from '../lib/scheduler.js';
-import { untaggedSlugs } from '../lib/patterns.js';
+import { needsEnrichment } from '../lib/patterns.js';
 
 const SYNC_ALARM = 'leettrack:sync';
 const REMINDER_ALARM = 'leettrack:reminder';
@@ -120,11 +120,12 @@ async function syncRecent() {
     }
   }
 
-  // Backfill tags/difficulty for anything captured before we knew them — live
-  // capture never sees them, and problems solved before this ran have none.
-  // Capped per sync so a large history doesn't hammer the endpoint.
+  // Backfill number/difficulty/tags for anything captured before we knew them —
+  // live capture never sees any of the three, and problems solved before this
+  // ran have none. Capped per sync so a large history doesn't hammer the
+  // endpoint; it converges over a few syncs.
   const { problems } = await readAll();
-  for (const slug of untaggedSlugs(problems, 8)) {
+  for (const slug of needsEnrichment(problems, 8)) {
     await enrichFromGraphQL(slug, base).catch(() => {});
   }
 

@@ -32,7 +32,8 @@ async function render() {
         const p = problems[r.slug] || { title: r.slug };
         return `<div class="p-item" data-slug="${esc(r.slug)}">
           ${r.needsReview ? '<span class="p-flag" title="Marked as needing review">\u2605</span>' : ''}
-          <a class="p-title" href="https://${meta.host || 'leetcode.com'}/problems/${esc(r.slug)}/" target="_blank" rel="noreferrer">${esc(p.title)}</a>
+          <a class="p-title" href="https://${meta.host || 'leetcode.com'}/problems/${esc(r.slug)}/" target="_blank" rel="noreferrer">${
+            p.frontendId ? `<span class="p-num tabular">${esc(p.frontendId)}.</span> ` : ''}${esc(p.title)}</a>
           <button class="btn btn-sm" data-act="delay" title="Push this to tomorrow">+1d</button>
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>
         </div>`;

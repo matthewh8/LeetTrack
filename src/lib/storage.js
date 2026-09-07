@@ -164,6 +164,8 @@ export async function recordSubmission(sub) {
       frontendId: sub.frontendId || prev?.frontendId || null,
       difficulty: sub.difficulty || prev?.difficulty || null,
       topicTags: sub.topicTags || prev?.topicTags || [],
+      // Tags removed by hand survive every later solve and every re-sync.
+      hiddenTags: prev?.hiddenTags || [],
       firstSolvedAt: prev?.firstSolvedAt || at,
       lastSolvedAt: Math.max(prev?.lastSolvedAt || 0, at),
       solveCount: (prev?.solveCount || 0) + 1,
@@ -191,6 +193,43 @@ export async function enrichProblem(slug, fields) {
   problems[slug] = { ...problems[slug], ...fields };
   await chrome.storage.local.set({ [KEYS.problems]: problems });
   return true;
+}
+
+/**
+ * Take a wrong tag off a problem, or put it back.
+ *
+ * LeetCode's tags are not always the ones you'd have chosen, and a tag you
+ * disagree with skews the patterns breakdown and the group filter for as long
+ * as it sits there. Removal is a per-problem overlay rather than an edit to
+ * `topicTags`: the next sync overwrites what LeetCode said without undoing
+ * what you said about it, and nothing is ever actually lost.
+ */
+export async function setTagHidden(slug, tag, hidden) {
+  const name = String(tag ?? '').trim();
+  if (!name) return null;
+  const raw = await get(KEYS.problems);
+  const problems = raw[KEYS.problems] || {};
+  const problem = problems[slug];
+  if (!problem) return null;
+
+  const current = new Set(problem.hiddenTags || []);
+  if (hidden) current.add(name);
+  else current.delete(name);
+
+  const next = { ...problem, hiddenTags: [...current] };
+  await chrome.storage.local.set({ [KEYS.problems]: { ...problems, [slug]: next } });
+  return next;
+}
+
+/** Put every removed tag back on one problem. */
+export async function restoreTags(slug) {
+  const raw = await get(KEYS.problems);
+  const problems = raw[KEYS.problems] || {};
+  const problem = problems[slug];
+  if (!problem?.hiddenTags?.length) return problem || null;
+  const next = { ...problem, hiddenTags: [] };
+  await chrome.storage.local.set({ [KEYS.problems]: { ...problems, [slug]: next } });
+  return next;
 }
 
 export async function reviewAction(slug, action, opts = {}) {

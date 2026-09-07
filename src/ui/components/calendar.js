@@ -56,5 +56,14 @@ export function renderCalendar(root, { monthKey, dueCounts, today, selected, onS
     grid.appendChild(cell);
   }
 
-  root.replaceChildren(head, grid);
+  // The month's own total, because the point of a month view is the shape of
+  // the load ahead and counting 30 badges by eye is not that.
+  const total = keys.reduce((sum, k) => sum + (dueCounts[k] || 0), 0);
+  const foot = document.createElement('p');
+  foot.className = 'cal-foot';
+  foot.textContent = total
+    ? `${total} review${total === 1 ? '' : 's'} this month`
+    : 'Nothing scheduled this month';
+
+  root.replaceChildren(head, grid, foot);
 }

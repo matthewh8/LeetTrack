@@ -6,7 +6,13 @@
 
 import { addDays } from './time.js';
 
-export const DEFAULT_INTERVALS = [1, 3, 7, 14, 30, 60, 120];
+// The ladder. Growth is roughly x2 per rung, which is what the expanding-gap
+// literature keeps landing on: the useful gap is a sizeable fraction of how
+// long you want to remember something, so each successful recall buys a much
+// longer wait. Past a year the evidence thins out badly — the long-retention
+// studies are few and small — so the ladder stops at 365 and repeats it rather
+// than inventing rungs nobody has measured.
+export const DEFAULT_INTERVALS = [1, 3, 7, 14, 30, 60, 120, 240, 365];
 
 /** Delay presets offered in the UI, alongside a free-text number of days. */
 export const DELAY_PRESETS = [
@@ -49,6 +55,10 @@ function pushFrom(review, todayK) {
 
 /**
  * `done`   -> graduate to the next interval
+ * `ace`    -> "nailed it": skip a whole cycle. The stage jumps two rungs, but
+ *             the next review is only one rung away — from the 3-day rung you
+ *             become a 14-day problem due in 7 days, not in 14. Confidence
+ *             should move the ladder, not blank the problem out for a month.
  * `again`  -> forgot it; back to stage 0
  * `delay`  -> not today; push `opts.days` (default 1) without touching the stage
  * `snooze` -> `delay` by a single day, kept as its own name for the UI
@@ -62,7 +72,7 @@ function pushFrom(review, todayK) {
  * `restore` -> put it back on the schedule
  *
  * @param {object} review
- * @param {'done'|'again'|'delay'|'snooze'|'skip'|'flag'|'unflag'} action
+ * @param {'done'|'ace'|'again'|'delay'|'snooze'|'skip'|'flag'|'unflag'} action
  * @param {string} todayK
  * @param {number[]} intervals
  * @param {{days?:number}} [opts]
@@ -79,6 +89,21 @@ export function applyReview(review, action, todayK, intervals, opts = {}) {
       lastReviewedAt: todayK,
       needsReview: false,
       history: log({ action }),
+    };
+  }
+
+  if (action === 'ace') {
+    // The rung being skipped is also the wait: it is the longest gap this
+    // problem has already earned, and jumping straight to the new rung's
+    // interval would double an untested one.
+    const days = intervalAt(intervals, review.stage + 1);
+    return {
+      ...review,
+      stage: review.stage + 2,
+      dueOn: addDays(todayK, days),
+      lastReviewedAt: todayK,
+      needsReview: false,
+      history: log({ action, days }),
     };
   }
 

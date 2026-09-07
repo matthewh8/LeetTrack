@@ -31,7 +31,16 @@
     <section class="card block rev-card" aria-labelledby="rev-h">
       <div class="card-head">
         <h2 id="rev-h">Reviews</h2>
-        <span class="note" id="rev-note"></span>
+        <div class="rev-head-end">
+          <span class="note" id="rev-note"></span>
+          <div class="filters">
+            <label class="visually-hidden" for="f-group">Filter reviews by group</label>
+            <select id="f-group" class="mini"></select>
+            <label class="visually-hidden" for="f-diff">Filter reviews by difficulty</label>
+            <select id="f-diff" class="mini"></select>
+            <button class="btn btn-sm" id="btn-filter-clear" hidden>Clear</button>
+          </div>
+        </div>
       </div>
       <div class="rev-split">
         <div class="rev-cal">
@@ -121,7 +130,9 @@
       <label class="field">
         <span>Review intervals (days)</span>
         <input name="intervals" id="f-intervals" inputmode="numeric" autocomplete="off">
-        <small>Comma separated. Each “Done” moves a problem to the next one.</small>
+        <small>Comma separated. Each “Done” moves a problem one rung up;
+          “Nailed it” moves it two. The last rung repeats forever, so a mature
+          problem keeps coming back at that cadence instead of vanishing.</small>
       </label>
 
       <label class="field">

@@ -20,11 +20,22 @@ using the session you're already signed in with.
   (`Settings → A new day starts at`), and moving it re-files the history you
   already have.
 - **Spaced repetition** — every solved problem is scheduled for review on a
-  configurable ladder (default `1, 3, 7, 14, 30, 60, 120` days). `Done` graduates
-  it to the next interval and `Again` sends it back to the start. When you can't
-  face it today: `Delay` pushes it by a day, a week, or any number of days you
-  type, and `Skip this cycle` pushes it a whole interval at the current stage —
-  neither counts as a review, so the ladder doesn't move.
+  configurable ladder (default `1, 3, 7, 14, 30, 60, 120, 240, 365` days).
+  `Done` graduates it to the next rung and `Again` sends it back to the start.
+  When you can't face it today: `Delay` pushes it by a day, a week, or any
+  number of days you type, and `Skip this cycle` pushes it a whole interval at
+  the current stage — neither counts as a review, so the ladder doesn't move.
+- **Nailed it** — the one you barely had to think about. It skips a whole
+  cycle: the problem jumps two rungs instead of one, but the next review is
+  still only one rung away. From the 3-day rung, `Done` makes it a 7-day
+  problem due in a week; `Nailed it` makes it a *14-day* problem, also due in
+  a week. Confidence should move the ladder, not blank the problem out for a
+  month on one good day.
+- **Groups** — filter the whole review card (calendar, count, and queue) by
+  topic and difficulty, for when you want a linked-list session rather than
+  whatever the schedule coughed up. Clicking a row in `Patterns` filters by it.
+  Matching is on the problem's whole tag list, not just the chips it shows, so
+  filtering by `Linked List` finds the one whose chips say `Recursion`.
 - **Needs review** — a star on any problem, in the queue or in recent solves,
   that pulls it to the top of the queue whatever its due date says. For the ones
   you technically solved but couldn't explain a week later.
@@ -38,7 +49,20 @@ using the session you're already signed in with.
   Window, Monotonic Stack) with the *container* it happens to use (Array, String,
   Hash Table). Raw, the generic ones drown out the useful ones — "Two Sum: Array,
   Hash Table" says nothing about what you practised. So tags are ranked by how
-  much they say about approach and the best one or two are surfaced.
+  much they say about approach and the best one or two are surfaced. Data
+  structures rank *with* the techniques, not below them: a linked-list problem
+  is a linked-list problem, and burying that under "Recursion" — true of half of
+  LeetCode — loses the one word you would have searched for.
+- **Tags you can correct** — LeetCode's tags aren't gospel, and a wrong one
+  skews the patterns breakdown and the group filter for as long as it sits
+  there. Every row's `More` menu lists the problem's tags with an × on each.
+  Removal is an overlay, never a delete: the removed ones are listed underneath
+  with one-click restore, and neither the next sync nor solving the problem
+  again brings them back on their own.
+- **Problem numbers** — the LeetCode number in front of every title, the way
+  people actually refer to these ("143", not "that reorder one"). Numbers come
+  from GraphQL, so anything captured live shows without one until the next sync
+  fills it in.
 - **Popup** — the streak and today's review queue, with one-tap Done and a
   one-tap push to tomorrow.
 - **Track from** — a start date for your history. Solves before it are ignored,
@@ -96,8 +120,8 @@ Playwright is a dev dependency used only by the render harness.
 ## Development
 
 ```bash
-npm test        # 92 unit tests: day boundaries and windows, streaks, scheduling,
-                #   retiring, stats, pruning, and the day-window migration
+npm test        # 109 unit tests: day boundaries and windows, streaks, scheduling,
+                #   retiring, tag edits, stats, pruning, and the day-window migration
 npm run check   # manifest refs resolve; lib/ stays free of chrome.*
 npm run render  # screenshots the dashboard light/dark/narrow into shots/
 ```
@@ -154,6 +178,21 @@ second half is what makes it stick — the GraphQL backfill re-reports your last
 within half an hour. Problems solved both before and after the date survive with
 their counts re-derived from the solves that were kept. Export first if you want
 the old history back; there is no undo.
+
+## How long the ladder runs
+
+The default rungs are `1, 3, 7, 14, 30, 60, 120, 240, 365` days — roughly a
+doubling each time, which is where the expanding-interval work keeps landing:
+the gap that pays is a sizeable fraction of how long you want to hold the
+material, so each successful recall buys a much longer wait than the last.
+
+Past a year, the honest answer is that the evidence thins out. The multi-year
+retention studies are few, small, and about vocabulary and facts rather than
+whether you can still write the algorithm; there is no measured rung to put
+after 365 that would be more than a guess. So the ladder stops there and
+repeats its last rung forever — a mature problem keeps coming back annually
+rather than falling off the schedule. If you want longer, the intervals are a
+comma-separated list in Settings; the ladder is whatever you type.
 
 ## Design notes
 

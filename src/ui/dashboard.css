@@ -68,8 +68,10 @@ main { padding-bottom: 56px; }
 /* ---- reviews (the top widget) ---- */
 .rev-card { margin: 24px 0 16px; }
 /* The calendar is a fixed-ish 7-column grid; the queue takes whatever is left,
-   which is where the long problem titles need the room. */
-.rev-split { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 8px 24px; }
+   which is where the long problem titles need the room. The calendar's share is
+   deliberately generous — it is a month of dated, clickable targets, and at the
+   old width the day numbers and their counts were fighting for the same 32px. */
+.rev-split { display: grid; grid-template-columns: minmax(330px, 430px) minmax(0, 1fr); gap: 8px 24px; }
 .rev-side { display: flex; flex-direction: column; min-width: 0; padding: 14px 18px 0 0; }
 .rev-summary { display: flex; align-items: baseline; gap: 12px; }
 .rev-summary .figure { font-size: 40px; }
@@ -80,25 +82,43 @@ main { padding-bottom: 56px; }
 /* ---- calendar ---- */
 .cal { padding: 14px 0 0 18px; }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.cal-head strong { font-size: 14px; }
+.cal-head strong { font-size: 15px; }
 .cal-nav-right { display: flex; gap: 6px; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-.cal-dow { font-size: 11px; color: var(--muted); text-align: center; padding-bottom: 2px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-dow { font-size: 11px; color: var(--muted); text-align: center; padding-bottom: 4px; }
 .cal-day {
-  position: relative; aspect-ratio: 1 / 1; border: 1px solid transparent; border-radius: var(--r-sm);
-  background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer;
+  position: relative; aspect-ratio: 1 / 1; min-height: 40px;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 14px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
+.cal-foot { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .cal-day:hover { border-color: var(--axis); }
 .cal-day[data-due="1"] { background: var(--accent-wash); color: var(--text-1); font-weight: 600; }
 .cal-day[data-today="1"] { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--text-1); }
 .cal-day[data-selected="1"] { background: var(--accent); color: var(--accent-ink); }
 .cal-day:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .cal-badge {
-  position: absolute; top: 2px; right: 3px; font-size: 9px; line-height: 1;
-  padding: 1px 3px; border-radius: 5px; background: var(--accent); color: var(--accent-ink);
+  position: absolute; top: 3px; right: 4px; font-size: 11px; line-height: 1; font-weight: 600;
+  padding: 2px 5px; border-radius: 7px; background: var(--accent); color: var(--accent-ink);
 }
 .cal-day[data-selected="1"] .cal-badge { background: var(--accent-ink); color: var(--accent); }
+
+/* ---- group filter ---- */
+/* Two selects and a Clear, sitting in the card head where the thing they
+   change begins. They filter the whole card — calendar included — so the
+   heading of the list underneath repeats the group by name: a filtered
+   calendar that looked quiet would otherwise read as a quiet week. */
+.rev-head-end { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.filters { display: flex; align-items: center; gap: 6px; }
+select.mini {
+  font: inherit; font-size: 12px; padding: 4px 6px; max-width: 190px;
+  border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-1); cursor: pointer;
+}
+select.mini:hover { background: var(--surface-2); }
+select.mini:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.q-filter { color: var(--accent); text-transform: none; letter-spacing: 0; }
 
 /* ---- review queue ---- */
 .queue { padding: 14px 0 0; }
@@ -108,6 +128,11 @@ main { padding-bottom: 56px; }
 .q-main { flex: 1; min-width: 0; }
 .q-title { display: block; font-weight: 500; color: var(--text-1); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-title:hover { text-decoration: underline; }
+/* The LeetCode number, in front of the title and out of its way: it is how you
+   look a problem up, not what you read the row for. */
+.q-num { color: var(--muted); font-weight: 400; margin-right: 2px; }
+.btn-ace { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--accent); }
+.btn-ace:hover { background: var(--accent-wash); }
 .q-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .q-actions { display: flex; gap: 6px; flex: none; }
 .q-actions .btn { flex: none; }
@@ -138,7 +163,7 @@ main { padding-bottom: 56px; }
 .menu > summary::after { content: "\25be"; font-size: 10px; color: var(--muted); }
 .menu[open] > summary { background: var(--surface-2); }
 .menu-pop {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 208px;
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 236px;
   display: flex; flex-direction: column; gap: 2px; padding: 8px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-md); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
@@ -162,6 +187,14 @@ main { padding-bottom: 56px; }
 .menu-row input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-color: var(--accent); }
 .menu-sep { border: 0; border-top: 1px solid var(--border); margin: 6px 0 2px; width: 100%; }
 
+/* ---- tag editor (inside the row menu) ---- */
+.tag-edit { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 4px; }
+.chip-x { font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.chip-x .x { color: var(--muted); font-size: 13px; line-height: 1; }
+.chip-x:hover { border-color: var(--critical); color: var(--critical); }
+.chip-x:hover .x { color: var(--critical); }
+.chip-x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
 /* ---- removed from review ---- */
 .retired-box { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
 .retired-box > summary {
@@ -181,7 +214,15 @@ main { padding-bottom: 56px; }
 
 /* ---- patterns ---- */
 .patterns { padding: 12px 18px 0; }
-.pat-row { display: grid; grid-template-columns: minmax(0, 1fr) 108px 30px; align-items: center; gap: 10px; padding: 5px 0; }
+.pat-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 108px 30px; align-items: center; gap: 10px;
+  width: 100%; padding: 5px 8px; margin: 0 -8px; font: inherit; text-align: left;
+  background: none; border: 0; border-radius: var(--r-sm); cursor: pointer;
+}
+.pat-row:hover { background: var(--surface-2); }
+.pat-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.pat-row[aria-pressed="true"] { background: var(--accent-wash); }
+.pat-row[aria-pressed="true"] .pat-tag { color: var(--accent); font-weight: 600; }
 .pat-tag { font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pat-bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
 .pat-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }

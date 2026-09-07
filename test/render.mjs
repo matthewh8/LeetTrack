@@ -105,6 +105,9 @@ const dueOffsets = [-3, -1, 0, 0, 1, 2, 4, 6, 9, 13, 18, 24];
 solvedSlugs.slice(0, dueOffsets.length).forEach((slug, i) => {
   reviews[slug] = { slug, stage: i % 4, dueOn: shift(today, dueOffsets[i]), lastReviewedAt: null, needsReview: false, history: [] };
 });
+// One problem with a tag removed by hand, to prove the chips and the patterns
+// breakdown both respect it.
+if (problems['climbing-stairs']) problems['climbing-stairs'].hiddenTags = ['Math'];
 // One problem marked "needs review" by hand: it is due weeks out but still has
 // to show at the top of today's queue.
 if (solvedSlugs[10]) reviews[solvedSlugs[10]].needsReview = true;
@@ -123,7 +126,7 @@ const fixture = {
   'leettrack:v1:days': days,
   'leettrack:v1:reviews': reviews,
   'leettrack:v1:settings': {
-    timezone: TZ, intervals: [1, 3, 7, 14, 30, 60, 120],
+    timezone: TZ, intervals: [1, 3, 7, 14, 30, 60, 120, 240, 365],
     dailyReminder: true, reminderHour: 20, dayStartHour: 2, theme: 'system',
   },
 };

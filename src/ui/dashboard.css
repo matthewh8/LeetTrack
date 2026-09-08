@@ -136,6 +136,19 @@ select.mini:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px;
 .q-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .q-actions { display: flex; gap: 6px; flex: none; }
 .q-actions .btn { flex: none; }
+
+/* Leading column so the marks line up down the list and the queue can be
+   scanned at a glance. The toggle is its own badge — pressed means flagged. */
+.q-flags { display: flex; gap: 1px; flex: none; }
+.q-flag {
+  appearance: none; background: none; border: 0; padding: 0 2px; cursor: pointer;
+  font-size: 13px; line-height: 1; color: var(--border);
+  border-radius: 4px; transition: color 0.12s ease;
+}
+.q-flag:hover { color: var(--text-2); }
+.q-flag:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.q-flag[data-flag="important"][aria-pressed="true"] { color: var(--warning); }
+.q-flag[data-flag="struggling"][aria-pressed="true"] { color: var(--critical); }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
 .tag[data-d="Easy"] { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .tag[data-d="Medium"] { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); }

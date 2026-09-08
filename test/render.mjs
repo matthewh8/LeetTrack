@@ -103,7 +103,17 @@ for (let i = 181; i >= 0; i -= 1) {
 const solvedSlugs = Object.keys(problems);
 const dueOffsets = [-3, -1, 0, 0, 1, 2, 4, 6, 9, 13, 18, 24];
 solvedSlugs.slice(0, dueOffsets.length).forEach((slug, i) => {
-  reviews[slug] = { slug, stage: i % 4, dueOn: shift(today, dueOffsets[i]), lastReviewedAt: null, needsReview: false, history: [] };
+  reviews[slug] = {
+    slug,
+    stage: i % 4,
+    dueOn: shift(today, dueOffsets[i]),
+    lastReviewedAt: null,
+    needsReview: false,
+    history: [],
+    // Enough of each to see the queue ordering and both toggle states.
+    important: i % 5 === 0,
+    struggling: i % 7 === 3,
+  };
 });
 // One problem with a tag removed by hand, to prove the chips and the patterns
 // breakdown both respect it.

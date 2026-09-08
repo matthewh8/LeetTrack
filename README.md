@@ -44,6 +44,14 @@ using the session you're already signed in with.
   your heatmap, and your patterns: it was still practised, it just doesn't need
   asking about again. Listed under `Removed from review` with a one-click
   restore, so removed never means deleted.
+- **Must-do and struggling** — two flags a problem carries between sittings, kept
+  separate from the buttons above because those judge one review while these
+  describe the problem. They're independent: a must-do can be one you never
+  miss, and one you keep failing can be one you don't much care about. ★ pins a
+  problem to the top of the queue, ⚑ marks one you're shaky on and sorts it just
+  below (after anything marked "Needs review"). Neither changes the interval
+  ladder — a flagged problem is reviewed on the same schedule, you just meet it
+  first.
 - **Patterns** — which techniques you've actually practised, ranked. LeetCode
   tags every problem, but its tags mix the *technique* that solves it (Sliding
   Window, Monotonic Stack) with the *container* it happens to use (Array, String,

@@ -1,6 +1,6 @@
 import {
   readAll, saveSettings, reviewAction, setNeedsReview, setRetired, syncDayWindow,
-  setTagHidden, restoreTags, exportAll, importAll, resetHistoryFrom, normaliseDayKey,
+  setTagHidden, restoreTags, setReviewFlag, exportAll, importAll, resetHistoryFrom, normaliseDayKey,
 } from '../lib/storage.js';
 import { todayKey, dayKey, addDays, diffDays, hourLabel } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
@@ -559,6 +559,12 @@ function renderQueue(today, counts) {
     const afterAce = intervalAt(settings.intervals, r.stage + 3);
     return `
       <div class="q-item" data-slug="${escapeHtml(r.slug)}"${r.needsReview ? ' data-flagged="1"' : ''}>
+        <div class="q-flags">
+          <button class="q-flag" data-flag="important" aria-pressed="${!!r.important}"
+                  title="Must-do — keeps this at the top of the queue">★</button>
+          <button class="q-flag" data-flag="struggling" aria-pressed="${!!r.struggling}"
+                  title="Struggling with this one">⚑</button>
+        </div>
         <div class="q-main">
           <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
           <span class="q-meta">${r.needsReview ? '<span class="flagged">Needs review</span>' : ''}${when}${patternChips(p)}</span>
@@ -677,6 +683,20 @@ for (const sel of ['#queue', '#recent', '#retired', '#problems']) {
     if (btn) runAction(btn);
   });
 }
+
+// `important` / `struggling` toggles: their own control, separate from the
+// verdict and menu actions above, since they mark the review rather than
+// judging a sitting.
+$('#queue').addEventListener('click', async (e) => {
+  const flagBtn = e.target.closest('[data-flag]');
+  if (!flagBtn) return;
+  const slug = flagBtn.closest('[data-slug]')?.dataset.slug;
+  if (!slug) return;
+  flagBtn.disabled = true;
+  await setReviewFlag(slug, flagBtn.dataset.flag, flagBtn.getAttribute('aria-pressed') !== 'true');
+  tip.hide();
+  await load();
+});
 
 // A delay menu left open would sit over the row beneath it after a re-render.
 document.addEventListener('click', (e) => {

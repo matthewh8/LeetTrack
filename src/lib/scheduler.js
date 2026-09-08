@@ -61,7 +61,7 @@ function pushFrom(review, todayK) {
  *             should move the ladder, not blank the problem out for a month.
  * `again`  -> forgot it; back to stage 0
  * `delay`  -> not today; push `opts.days` (default 1) without touching the stage
- * `snooze` -> `delay` by a single day, kept as its own name for the UI
+ * `snooze` -> "Later": `delay` by a single day, kept as its own name for the UI
  * `skip`   -> skip this cycle: push a whole interval at the current stage,
  *             which is not the same as reviewing it — the stage doesn't move
  *             and it doesn't count as reviewed
@@ -172,14 +172,41 @@ export function retiredReviews(reviews) {
 }
 
 /**
+ * Flags a review carries between sittings, as opposed to `applyReview`'s
+ * actions, which judge one sitting. They're independent: a must-do problem can
+ * be one you never miss, and one you keep failing can be one you don't care
+ * about. Both are display and ordering only — neither touches the interval
+ * ladder.
+ */
+export const FLAGS = ['important', 'struggling'];
+
+/**
+ * Set or clear one flag. Flagging is not reviewing, so this leaves `dueOn`,
+ * `stage`, `lastReviewedAt` and `history` alone. Unknown names are a no-op.
+ */
+export function setFlag(review, flag, value) {
+  if (!FLAGS.includes(flag)) return review;
+  return { ...review, [flag]: !!value };
+}
+
+// Must-dos first, then the ones you've marked shaky. Overdue-first ordering
+// still holds inside each group, so flagging reorders the queue without hiding
+// how late anything is.
+function rank(review) {
+  return (review.important ? 2 : 0) + (review.struggling ? 1 : 0);
+}
+
+/**
  * The queue: everything due on or before `key`, plus anything flagged as
- * needing review whatever its due date. Flagged first, then oldest due first.
+ * needing review whatever its due date. Needs-review first, then must-dos and
+ * shaky ones, then oldest due first.
  */
 export function dueBy(reviews, key) {
   return activeReviews(reviews)
     .filter((r) => r.dueOn <= key || r.needsReview)
     .sort((a, b) =>
       Number(!!b.needsReview) - Number(!!a.needsReview)
+      || rank(b) - rank(a)
       || a.dueOn.localeCompare(b.dueOn)
       || a.slug.localeCompare(b.slug));
 }

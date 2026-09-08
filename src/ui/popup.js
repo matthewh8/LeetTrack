@@ -10,6 +10,15 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/** Read-only marks — flags are toggled on the dashboard, not here. */
+function flagMarks(review) {
+  const marks = [
+    review.important && '<span data-flag="important" title="Must-do">★</span>',
+    review.struggling && '<span data-flag="struggling" title="Struggling">⚑</span>',
+  ].filter(Boolean);
+  return marks.length ? `<span class="p-flags">${marks.join('')}</span>` : '';
+}
+
 async function render() {
   await syncDayWindow().catch(() => {});
   const { days, reviews, problems, settings, meta } = await readAll();
@@ -32,6 +41,7 @@ async function render() {
         const p = problems[r.slug] || { title: r.slug };
         return `<div class="p-item" data-slug="${esc(r.slug)}">
           ${r.needsReview ? '<span class="p-flag" title="Marked as needing review">\u2605</span>' : ''}
+          ${flagMarks(r)}
           <a class="p-title" href="https://${meta.host || 'leetcode.com'}/problems/${esc(r.slug)}/" target="_blank" rel="noreferrer">${
             p.frontendId ? `<span class="p-num tabular">${esc(p.frontendId)}.</span> ` : ''}${esc(p.title)}</a>
           <button class="btn btn-sm" data-act="delay" title="Push this to tomorrow">+1d</button>

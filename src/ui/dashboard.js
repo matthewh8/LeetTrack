@@ -10,6 +10,9 @@ import {
 } from '../lib/scheduler.js';
 import { difficultyCounts, recentSolves, DIFFICULTIES } from '../lib/stats.js';
 import {
+  problemRows, searchProblems, STATUS_FILTERS, SORTS,
+} from '../lib/search.js';
+import {
   patternsOf, patternCounts, tagCounts, visibleTags, hiddenTags, hasTag,
 } from '../lib/patterns.js';
 import { renderHeatmap } from './components/heatmap.js';
@@ -26,7 +29,13 @@ const view = {
   // that disagreed with the list under it would just be a bug you have to
   // remember.
   group: 'all', difficulty: 'all',
+  // All problems: its own text search, status filter and sort order. The group
+  // and difficulty above are shared with the Reviews card rather than
+  // duplicated — one filter, two places it is shown and can be set.
+  q: '', status: 'all', sort: 'recent', dbLimit: 0,
 };
+
+const DB_PAGE = 25;
 let state = null;
 
 const problemUrl = (slug, host) => `https://${host || 'leetcode.com'}/problems/${slug}/`;
@@ -104,7 +113,7 @@ function render(today) {
   // ---- reviews ----
   // Everything in this card is drawn from the filtered set, so the calendar,
   // the count, and the list can never tell three different stories.
-  renderFilters(reviews);
+  renderFilters();
   const shown = filterReviews(reviews);
   const due = dueBy(shown, today);
   const counts = dueCountsByDay(shown);
@@ -175,6 +184,9 @@ function render(today) {
         </div>`).join('')
     : '<p class="empty">Solve a problem on LeetCode and it will appear here.</p>';
 
+  // ---- all problems ----
+  renderProblems(today);
+
   // A row menu left open across a re-render: only tag edits ask for this, and
   // only for the row that was being edited. The list is part of the address —
   // a problem due today is also a recent solve, so the slug alone would be
@@ -240,38 +252,55 @@ function filterReviews(reviews) {
 }
 
 /**
- * The two selects above the calendar. Groups are drawn from the problems
- * actually on the schedule — offering a tag that can only ever return an empty
- * list is worse than not offering it — and matched on the problem's whole tag
- * list, not on the one or two chips shown, so filtering by "Linked List" finds
- * the linked-list problem whose chip says "Recursion".
+ * The group and difficulty selects, drawn twice: above the calendar and above
+ * the problem index. One filter state, two places to see and set it.
+ *
+ * Options come from every tracked problem, not just the scheduled ones. The
+ * rule is still that a tag which could only ever return an empty list is worse
+ * than no tag at all — but the index lists removed and unscheduled problems
+ * too, so a tag that only appears on those now has somewhere to land. The count
+ * describes the group itself, which is why the Reviews card can show fewer rows
+ * than the number beside the tag it is filtered to.
+ *
+ * Matching is on the problem's whole tag list, not on the one or two chips it
+ * shows, so filtering by "Linked List" finds the linked-list problem whose chip
+ * says "Recursion".
  */
-function renderFilters(reviews) {
+function renderFilters() {
   const { problems } = state;
-  const scheduled = {};
-  for (const r of activeReviews(reviews)) {
-    if (problems[r.slug]) scheduled[r.slug] = problems[r.slug];
-  }
 
-  const groups = tagCounts(scheduled);
+  const groups = tagCounts(problems);
   // A filter set from a tag that has since been removed must stay selectable,
   // or the select would silently snap back to "All groups" and show more rows
   // than asked for.
   if (view.group !== 'all' && !groups.some((g) => g.tag === view.group)) {
     groups.unshift({ tag: view.group, count: 0 });
   }
-  const groupSel = $('#f-group');
-  groupSel.innerHTML = `<option value="all">All groups</option>`
+  const groupHtml = `<option value="all">All groups</option>`
     + groups.map((g) => `<option value="${escapeHtml(g.tag)}">${escapeHtml(g.tag)} (${g.count})</option>`).join('');
-  groupSel.value = view.group;
+  for (const sel of [$('#f-group'), $('#db-group')]) {
+    sel.innerHTML = groupHtml;
+    sel.value = view.group;
+  }
 
   const present = [...DIFFICULTIES, 'Unknown']
-    .map((d) => ({ d, n: Object.values(scheduled).filter((p) => (p.difficulty || 'Unknown') === d).length }))
+    .map((d) => ({ d, n: Object.values(problems).filter((p) => (p.difficulty || 'Unknown') === d).length }))
     .filter(({ d, n }) => n || d === view.difficulty);
-  const diffSel = $('#f-diff');
-  diffSel.innerHTML = `<option value="all">Any difficulty</option>`
+  const diffHtml = `<option value="all">Any difficulty</option>`
     + present.map(({ d, n }) => `<option value="${d}">${d} (${n})</option>`).join('');
-  diffSel.value = view.difficulty;
+  for (const sel of [$('#f-diff'), $('#db-diff')]) {
+    sel.innerHTML = diffHtml;
+    sel.value = view.difficulty;
+  }
+
+  const statusSel = $('#db-status');
+  statusSel.innerHTML = STATUS_FILTERS
+    .map((o) => `<option value="${o.value}">${o.label}</option>`).join('');
+  statusSel.value = view.status;
+
+  const sortSel = $('#db-sort');
+  sortSel.innerHTML = SORTS.map((o) => `<option value="${o.value}">${o.label}</option>`).join('');
+  sortSel.value = view.sort;
 
   $('#btn-filter-clear').hidden = !filterActive();
 }
@@ -411,6 +440,81 @@ function tagEditor(slug) {
     <hr class="menu-sep">`;
 }
 
+const STATUS_LABEL = {
+  due: 'Due now',
+  upcoming: 'Scheduled',
+  'needs-review': 'Needs review',
+  removed: 'Removed',
+  unscheduled: 'Not scheduled',
+};
+
+/**
+ * The problem index: every problem you have tracked, in one list you can
+ * search. The group and difficulty come from the shared filter, so setting a
+ * group on the Reviews card — or clicking a row in Patterns — narrows this too.
+ */
+function renderProblems(today) {
+  const { problems, reviews, settings, meta } = state;
+
+  const rows = problemRows(problems, reviews, today);
+  const found = searchProblems(rows, {
+    query: view.q,
+    group: view.group,
+    difficulty: view.difficulty,
+    status: view.status,
+    sort: view.sort,
+  });
+
+  const narrowed = found.length !== rows.length;
+  $('#db-note').textContent = !rows.length
+    ? ''
+    : narrowed
+      ? `${found.length} of ${rows.length}`
+      : `${rows.length} problem${rows.length === 1 ? '' : 's'}`;
+
+  const el = $('#problems');
+  if (!rows.length) {
+    el.innerHTML = '<p class="empty">Nothing tracked yet. Solve a problem on LeetCode '
+      + 'and it will show up here.</p>';
+    return;
+  }
+  if (!found.length) {
+    el.innerHTML = '<p class="empty">No problem matches that. '
+      + '<button class="linkish" data-db="reset">Clear the search and filters</button></p>';
+    return;
+  }
+
+  const limit = view.dbLimit || DB_PAGE;
+  const shown = found.slice(0, limit);
+
+  el.innerHTML = shown.map((r) => {
+    const p = problems[r.slug];
+    const when = r.dueOn
+      ? `<span class="${r.due ? 'overdue' : ''}">${r.due ? 'due ' : ''}${relativeDay(r.dueOn, today)}</span>`
+      : '';
+    return `
+      <div class="db-item" data-slug="${escapeHtml(r.slug)}"${r.retired ? ' data-off="1"' : ''}>
+        <div class="db-main">
+          <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+          <span class="q-meta">
+            <span class="db-status" data-s="${r.status}">${STATUS_LABEL[r.status]}</span>
+            ${when}
+            ${r.solveCount > 1 ? `<span>solved ${r.solveCount}\u00d7</span>` : ''}
+            ${patternChips(p)}
+          </span>
+        </div>
+        ${r.difficulty !== 'Unknown' ? `<span class="tag" data-d="${r.difficulty}">${r.difficulty}</span>` : ''}
+        <span class="db-when">${r.lastSolvedAt ? relativeDay(dayOf(r.lastSolvedAt, settings.timezone), today) : ''}</span>
+        ${flagButton(r.review)}
+        ${recentMenu(r.slug, r.review, settings.intervals)}
+      </div>`;
+  }).join('')
+    + (found.length > shown.length
+      ? `<p class="q-more"><button class="linkish" data-db="more">Show ${
+          Math.min(DB_PAGE, found.length - shown.length)} more of ${found.length}</button></p>`
+      : '');
+}
+
 const QUEUE_PREVIEW = 10;
 
 function renderQueue(today, counts) {
@@ -536,7 +640,7 @@ async function runAction(btn) {
     tip.hide();
     // The menu is reopened after the re-render: removing three wrong tags
     // shouldn't mean opening the same menu three times.
-    const list = host.closest('#queue, #recent, #retired')?.id;
+    const list = host.closest('#queue, #recent, #retired, #problems')?.id;
     if (list) view.openMenu = { slug, list };
     await load();
     return;
@@ -567,7 +671,7 @@ async function runAction(btn) {
   await load();
 }
 
-for (const sel of ['#queue', '#recent', '#retired']) {
+for (const sel of ['#queue', '#recent', '#retired', '#problems']) {
   $(sel).addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
     if (btn) runAction(btn);
@@ -594,6 +698,56 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   for (const menu of document.querySelectorAll('.menu[open]')) menu.open = false;
   view.openMenu = null;
+});
+
+// ---- problem index ----
+const todayNow = () => todayKey(state.settings.timezone, state.settings.dayStartHour);
+
+// Only the index is redrawn while typing: a full render would rebuild the
+// selects around the search box, and the caret would have to survive that on
+// every keystroke.
+$('#db-q').addEventListener('input', (e) => {
+  view.q = e.target.value;
+  view.dbLimit = DB_PAGE;
+  renderProblems(todayNow());
+});
+
+$('#db-status').addEventListener('change', (e) => {
+  view.status = e.target.value;
+  view.dbLimit = DB_PAGE;
+  renderProblems(todayNow());
+});
+
+$('#db-sort').addEventListener('change', (e) => {
+  view.sort = e.target.value;
+  renderProblems(todayNow());
+});
+
+$('#problems').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-db]');
+  if (!btn) return;
+  if (btn.dataset.db === 'more') {
+    view.dbLimit = (view.dbLimit || DB_PAGE) + DB_PAGE;
+    renderProblems(todayNow());
+    return;
+  }
+  // "Clear the search and filters" — the group and difficulty are shared, so
+  // this resets the Reviews card with it. That is the honest behaviour: leaving
+  // them set would mean the index still hid rows after saying it cleared.
+  view.q = '';
+  $('#db-q').value = '';
+  view.status = 'all';
+  view.dbLimit = DB_PAGE;
+  setFilter({ group: 'all', difficulty: 'all' });
+});
+
+$('#db-group').addEventListener('change', (e) => {
+  view.dbLimit = DB_PAGE;
+  setFilter({ group: e.target.value });
+});
+$('#db-diff').addEventListener('change', (e) => {
+  view.dbLimit = DB_PAGE;
+  setFilter({ difficulty: e.target.value });
 });
 
 // ---- group filter ----

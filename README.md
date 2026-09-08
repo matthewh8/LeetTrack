@@ -63,6 +63,14 @@ using the session you're already signed in with.
   people actually refer to these ("143", not "that reorder one"). Numbers come
   from GraphQL, so anything captured live shows without one until the next sync
   fills it in.
+- **All problems** — the index: every problem you've tracked in one searchable
+  list. Search matches the number, the title, the slug and *every* tag, so "146"
+  and "doubly" both find LRU Cache; several terms narrow together, so "hash
+  hard" is one problem. Filter it by review status (due, scheduled, needs
+  review, removed, not scheduled) and sort it by when you last solved, next
+  review, number, title, difficulty, or times solved. The group and difficulty
+  selects are the *same* filter the Reviews card uses — set it in either place,
+  or by clicking a row in Patterns, and both narrow together.
 - **Popup** — the streak and today's review queue, with one-tap Done and a
   one-tap push to tomorrow.
 - **Track from** — a start date for your history. Solves before it are ignored,
@@ -101,11 +109,11 @@ open, and `question(titleSlug:)` to fill in difficulty and topic tags. If the
 submit endpoint ever changes shape, live capture degrades but solve history and
 streaks stay correct.
 
-## Layout
+## Source layout
 
 ```
 manifest.json
-src/lib/        time, streak, scheduler, stats, prune, rekey
+src/lib/        time, streak, scheduler, stats, prune, rekey, search
                                         (pure — no chrome.*, tested)
                 storage, leetcode-api   (the only chrome.* / network layers)
 src/content/    interceptor (MAIN world), bridge (isolated)
@@ -120,7 +128,7 @@ Playwright is a dev dependency used only by the render harness.
 ## Development
 
 ```bash
-npm test        # 109 unit tests: day boundaries and windows, streaks, scheduling,
+npm test        # 125 unit tests: day boundaries and windows, streaks, scheduling,
                 #   retiring, tag edits, stats, pruning, and the day-window migration
 npm run check   # manifest refs resolve; lib/ stays free of chrome.*
 npm run render  # screenshots the dashboard light/dark/narrow into shots/
@@ -144,6 +152,15 @@ top of the page: the month calendar on the left, today's queue on the right of
 it. Everything else — streak, solved counts, heatmap, patterns, recent solves —
 is a read-out and sits below. A long overdue pile is capped at ten rows behind a
 `Show all` so it can't push the rest of the page out of reach.
+
+`All problems` sits at the bottom, because it answers a question you go looking
+for ("where is that binary search problem from March") rather than one the page
+should answer at a glance. It carries its own copy of the group and difficulty
+selects rather than a second filter: `view.group` and `view.difficulty` are one
+piece of state rendered in two places, so the Reviews card and the index can
+never disagree about what is filtered. Only the list redraws while you type —
+a full render would rebuild the selects around the search box and the caret
+would have to survive that on every keystroke.
 
 Removing a problem from review marks the row `retired` rather than deleting it.
 `recordSubmission` only schedules a problem it has never seen, so a deleted

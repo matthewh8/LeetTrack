@@ -108,6 +108,29 @@
       </section>
     </div>
 
+    <!-- The index: every tracked problem, searchable, and narrowed by the same
+         group and difficulty filter the Reviews card is set to. -->
+    <section class="card block" aria-labelledby="db-h">
+      <div class="card-head">
+        <h2 id="db-h">All problems</h2>
+        <span class="note" id="db-note"></span>
+      </div>
+      <div class="db-controls">
+        <label class="visually-hidden" for="db-q">Search problems</label>
+        <input type="search" id="db-q" class="db-search" autocomplete="off" spellcheck="false"
+          placeholder="Search by number, title, or tag…">
+        <label class="visually-hidden" for="db-group">Filter by group</label>
+        <select id="db-group" class="mini"></select>
+        <label class="visually-hidden" for="db-diff">Filter by difficulty</label>
+        <select id="db-diff" class="mini"></select>
+        <label class="visually-hidden" for="db-status">Filter by review status</label>
+        <select id="db-status" class="mini"></select>
+        <label class="visually-hidden" for="db-sort">Sort by</label>
+        <select id="db-sort" class="mini"></select>
+      </div>
+      <div id="problems" class="db"></div>
+    </section>
+
     <p class="footnote">
       Everything stays in this browser. Nothing is uploaded.
       <button class="linkish" id="btn-export">Export JSON</button> ·

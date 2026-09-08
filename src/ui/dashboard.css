@@ -195,6 +195,28 @@ select.mini:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px;
 .chip-x:hover .x { color: var(--critical); }
 .chip-x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
+/* ---- all problems (the index) ---- */
+.db-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px 0; }
+.db-search {
+  flex: 1 1 220px; min-width: 0; font: inherit; font-size: 13px; padding: 6px 10px;
+  border-radius: var(--r-sm); border: 1px solid var(--axis);
+  background: var(--plane); color: var(--text-1);
+}
+.db-search::placeholder { color: var(--muted); }
+.db-search:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-color: var(--accent); }
+.db { padding: 6px 18px 0; }
+.db-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
+.db-item:first-child { border-top: 0; }
+.db-main { flex: 1; min-width: 0; }
+.db-when { font-size: 12px; color: var(--muted); flex: none; white-space: nowrap; }
+.db-item .btn { flex: none; }
+/* A removed problem is still listed — it is still solved — but it should read
+   as off-duty rather than as another row waiting for you. */
+.db-item[data-off="1"] .q-title { color: var(--text-2); }
+.db-status { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.db-status[data-s="due"] { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+.db-status[data-s="needs-review"] { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+
 /* ---- removed from review ---- */
 .retired-box { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
 .retired-box > summary {
@@ -290,7 +312,8 @@ main, .card, .block, .stat { min-width: 0; }
 .topbar-actions { flex: 0 0 auto; }
 
 @media (max-width: 620px) {
-  .q-item { flex-wrap: wrap; }
+  .q-item, .db-item { flex-wrap: wrap; }
+  .db-search { flex-basis: 100%; }
   .q-actions { width: 100%; }
   .menu { position: static; }
   .menu-pop { right: 8px; left: 8px; width: auto; }

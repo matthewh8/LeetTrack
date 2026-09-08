@@ -17,8 +17,15 @@ using the session you're already signed in with.
   doesn't panic you at 6pm.
 - **Spaced repetition** — every solved problem is scheduled for review on a
   configurable ladder (default `1, 3, 7, 14, 30, 60, 120` days). `Done` graduates
-  it to the next interval, `Again` sends it back to the start, `Snooze` pushes a
+  it to the next interval, `Again` sends it back to the start, `Later` pushes a
   day without losing progress.
+- **Must-do and struggling** — two flags a problem carries between sittings, kept
+  separate from the three buttons above because those judge one review while
+  these describe the problem. They're independent: a must-do can be one you never
+  miss, and one you keep failing can be one you don't much care about. ★ pins a
+  problem to the top of the queue, ⚑ marks one you're shaky on and sorts it just
+  below. Neither changes the interval ladder — a flagged problem is reviewed on
+  the same schedule, you just meet it first.
 - **Patterns** — which techniques you've actually practised, ranked. LeetCode
   tags every problem, but its tags mix the *technique* that solves it (Sliding
   Window, Monotonic Stack) with the *container* it happens to use (Array, String,

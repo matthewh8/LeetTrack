@@ -2,7 +2,7 @@
 // objects so it stays testable and portable.
 
 import { dayKey, localTimeZone, isValidTimeZone } from './time.js';
-import { DEFAULT_INTERVALS, scheduleFirst, applyReview, parseIntervals } from './scheduler.js';
+import { DEFAULT_INTERVALS, scheduleFirst, applyReview, setFlag, parseIntervals } from './scheduler.js';
 import { pruneState } from './prune.js';
 
 const NS = 'leettrack:v1:';
@@ -191,6 +191,21 @@ export async function reviewAction(slug, action) {
   if (!review) return null;
   const today = dayKey(new Date(), settings.timezone);
   const next = applyReview(review, action, today, settings.intervals);
+  await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
+  return next;
+}
+
+/**
+ * Toggle `important` or `struggling`. These ride on the review rather than the
+ * problem because `recordSubmission` rebuilds each problem from a fixed field
+ * list, which would wipe them on the next re-solve. Reviews are only ever
+ * spread, so flags survive solves, prunes, and export/import untouched.
+ */
+export async function setReviewFlag(slug, flag, value) {
+  const { reviews } = await readAll();
+  const review = reviews[slug];
+  if (!review) return null;
+  const next = setFlag(review, flag, value);
   await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
   return next;
 }

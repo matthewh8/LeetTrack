@@ -10,6 +10,15 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/** Read-only marks — flags are toggled on the dashboard, not here. */
+function flagMarks(review) {
+  const marks = [
+    review.important && '<span data-flag="important" title="Must-do">★</span>',
+    review.struggling && '<span data-flag="struggling" title="Struggling">⚑</span>',
+  ].filter(Boolean);
+  return marks.length ? `<span class="p-flags">${marks.join('')}</span>` : '';
+}
+
 async function render() {
   const { days, reviews, problems, settings, meta } = await readAll();
   if (settings.theme === 'light' || settings.theme === 'dark') {
@@ -30,6 +39,7 @@ async function render() {
     ? `<h3>Due now · ${due.length}</h3>` + due.slice(0, 6).map((r) => {
         const p = problems[r.slug] || { title: r.slug };
         return `<div class="p-item" data-slug="${esc(r.slug)}">
+          ${flagMarks(r)}
           <a class="p-title" href="https://${meta.host || 'leetcode.com'}/problems/${esc(r.slug)}/" target="_blank" rel="noreferrer">${esc(p.title)}</a>
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>
         </div>`;

@@ -25,7 +25,7 @@ export function scheduleFirst(slug, todayK, intervals) {
 
 /**
  * `done`   -> graduate to the next interval
- * `snooze` -> push a day, keep the stage (didn't get to it, didn't fail it)
+ * `snooze` -> "Later": push a day, keep the stage (didn't get to it, didn't fail it)
  * `again`  -> forgot it; back to stage 0
  */
 export function applyReview(review, action, todayK, intervals) {
@@ -44,11 +44,38 @@ export function applyReview(review, action, todayK, intervals) {
   return review;
 }
 
+/**
+ * Flags a review carries between sittings, as opposed to `applyReview`'s
+ * actions, which judge one sitting. They're independent: a must-do problem can
+ * be one you never miss, and one you keep failing can be one you don't care
+ * about. Both are display and ordering only — neither touches the interval
+ * ladder.
+ */
+export const FLAGS = ['important', 'struggling'];
+
+/**
+ * Set or clear one flag. Flagging is not reviewing, so this leaves `dueOn`,
+ * `stage`, `lastReviewedAt` and `history` alone. Unknown names are a no-op.
+ */
+export function setFlag(review, flag, value) {
+  if (!FLAGS.includes(flag)) return review;
+  return { ...review, [flag]: !!value };
+}
+
+// Must-dos first, then the ones you've marked shaky. Overdue-first ordering
+// still holds inside each group, so flagging reorders the queue without hiding
+// how late anything is.
+function rank(review) {
+  return (review.important ? 2 : 0) + (review.struggling ? 1 : 0);
+}
+
 /** Everything due on or before `key` — overdue items included, oldest first. */
 export function dueBy(reviews, key) {
   return Object.values(reviews)
     .filter((r) => r.dueOn <= key)
-    .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.slug.localeCompare(b.slug));
+    .sort((a, b) => rank(b) - rank(a)
+      || a.dueOn.localeCompare(b.dueOn)
+      || a.slug.localeCompare(b.slug));
 }
 
 /** { "YYYY-MM-DD": count } of items scheduled exactly on each day. */

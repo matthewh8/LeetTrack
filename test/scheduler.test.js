@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_INTERVALS, intervalAt, scheduleFirst, applyReview, dueBy, dueCountsByDay, parseIntervals,
+  DEFAULT_INTERVALS, intervalAt, scheduleFirst, applyReview, setFlag, dueBy, dueCountsByDay,
+  parseIntervals,
 } from '../src/lib/scheduler.js';
 
 const I = DEFAULT_INTERVALS; // 1,3,7,14,30,60,120
@@ -61,6 +62,49 @@ test('dueBy includes overdue, oldest first', () => {
   };
   assert.deepEqual(dueBy(reviews, '2026-09-03').map((r) => r.slug), ['b', 'c']);
   assert.deepEqual(dueBy(reviews, '2026-09-10').map((r) => r.slug), ['b', 'c', 'a']);
+});
+
+test('setFlag sets and clears without touching the schedule', () => {
+  const r0 = { slug: 'x', stage: 4, dueOn: '2026-09-02', lastReviewedAt: '2026-08-30', history: [{ action: 'done', on: '2026-08-30' }] };
+
+  const on = setFlag(r0, 'important', true);
+  assert.equal(on.important, true);
+  assert.equal(on.stage, 4);
+  assert.equal(on.dueOn, '2026-09-02');
+  assert.equal(on.lastReviewedAt, '2026-08-30');
+  assert.deepEqual(on.history, r0.history); // flagging is not reviewing
+  assert.equal(r0.important, undefined);    // and does not mutate in place
+
+  assert.equal(setFlag(on, 'important', false).important, false);
+  assert.equal(setFlag(r0, 'struggling', true).struggling, true);
+});
+
+test('setFlag ignores an unknown flag', () => {
+  const r0 = { slug: 'x', stage: 0, dueOn: '2026-09-02', history: [] };
+  assert.equal(setFlag(r0, 'nonsense', true), r0);
+});
+
+test('flags survive a review — they live on the review record', () => {
+  const r0 = setFlag(scheduleFirst('two-sum', '2026-09-02', I), 'important', true);
+  const r1 = applyReview(r0, 'done', '2026-09-03', I);
+  assert.equal(r1.important, true);
+  assert.equal(applyReview(r1, 'again', '2026-09-04', I).important, true);
+});
+
+test('dueBy leads with must-dos, then struggling, overdue-first within each', () => {
+  const reviews = {
+    plain: { slug: 'plain', dueOn: '2026-08-28', stage: 0 },
+    star: { slug: 'star', dueOn: '2026-09-03', stage: 0, important: true },
+    starLate: { slug: 'starLate', dueOn: '2026-08-30', stage: 0, important: true },
+    shaky: { slug: 'shaky', dueOn: '2026-09-03', stage: 0, struggling: true },
+    both: { slug: 'both', dueOn: '2026-09-03', stage: 0, important: true, struggling: true },
+  };
+  // both (rank 3) > starLate, star (rank 2, oldest first) > shaky (1) > plain (0),
+  // even though `plain` is the most overdue thing in the list.
+  assert.deepEqual(
+    dueBy(reviews, '2026-09-03').map((r) => r.slug),
+    ['both', 'starLate', 'star', 'shaky', 'plain'],
+  );
 });
 
 test('dueCountsByDay tallies the calendar', () => {

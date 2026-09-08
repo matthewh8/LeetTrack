@@ -1,5 +1,6 @@
 import {
-  readAll, saveSettings, reviewAction, exportAll, importAll, resetHistoryFrom, normaliseDayKey,
+  readAll, saveSettings, reviewAction, setReviewFlag, exportAll, importAll, resetHistoryFrom,
+  normaliseDayKey,
 } from '../lib/storage.js';
 import { todayKey, addDays, diffDays } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
@@ -216,6 +217,12 @@ function renderQueue(today, counts) {
     const late = r.dueOn < today;
     return `
       <div class="q-item" data-slug="${escapeHtml(r.slug)}">
+        <div class="q-flags">
+          <button class="q-flag" data-flag="important" aria-pressed="${!!r.important}"
+                  title="Must-do — keeps this at the top of the queue">★</button>
+          <button class="q-flag" data-flag="struggling" aria-pressed="${!!r.struggling}"
+                  title="Struggling with this one">⚑</button>
+        </div>
         <div class="q-main">
           <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${escapeHtml(p.title)}</a>
           <span class="q-meta">${late ? `<span class="overdue">due ${relativeDay(r.dueOn, today)}</span>` : `stage ${r.stage + 1}`}${patternChips(p)}</span>
@@ -224,13 +231,24 @@ function renderQueue(today, counts) {
         <div class="q-actions">
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>
           <button class="btn btn-sm" data-act="again">Again</button>
-          <button class="btn btn-sm" data-act="snooze">Snooze</button>
+          <button class="btn btn-sm" data-act="snooze" title="Push to tomorrow — keeps your stage">Later</button>
         </div>
       </div>`;
   }).join('');
 }
 
 $('#queue').addEventListener('click', async (e) => {
+  const flagBtn = e.target.closest('[data-flag]');
+  if (flagBtn) {
+    const slug = flagBtn.closest('[data-slug]')?.dataset.slug;
+    if (!slug) return;
+    flagBtn.disabled = true;
+    await setReviewFlag(slug, flagBtn.dataset.flag, flagBtn.getAttribute('aria-pressed') !== 'true');
+    tip.hide();
+    await load();
+    return;
+  }
+
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
   const slug = btn.closest('[data-slug]')?.dataset.slug;

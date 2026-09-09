@@ -56,6 +56,10 @@ test('a day starts at 2am by default', () => {
   assert.equal(defaultSettings().dayStartHour, 2);
 });
 
+test('problem links open on LeetCode by default', () => {
+  assert.equal(defaultSettings().linkSite, 'leetcode');
+});
+
 test('upgrading re-files history recorded under the old midnight boundary', async () => {
   seedMidnightHistory();
 

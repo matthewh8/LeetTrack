@@ -81,6 +81,11 @@ using the session you're already signed in with.
   or by clicking a row in Patterns, and both narrow together.
 - **Popup** — the streak and today's review queue, with one-tap Done and a
   one-tap push to tomorrow.
+- **NeetCode links** — `Settings → Open problem links on` points every problem
+  title (queue, recent solves, problem list, popup) at neetcode.io instead of
+  the LeetCode host you're signed into. It's link handling only — NeetCode
+  mirrors LeetCode's slugs, so no new tracking or permissions are involved,
+  and solves still have to happen on LeetCode itself to be recorded.
 - **Track from** — a start date for your history. Solves before it are ignored,
   and setting one deletes what came before, so you can wipe test data or start a
   fresh season without uninstalling.

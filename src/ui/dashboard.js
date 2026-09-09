@@ -18,6 +18,7 @@ import {
 import { renderHeatmap } from './components/heatmap.js';
 import { renderCalendar } from './components/calendar.js';
 import { createTooltip } from './components/tooltip.js';
+import { problemUrl } from '../lib/links.js';
 
 const $ = (sel) => document.querySelector(sel);
 const tip = createTooltip();
@@ -37,8 +38,6 @@ const view = {
 
 const DB_PAGE = 25;
 let state = null;
-
-const problemUrl = (slug, host) => `https://${host || 'leetcode.com'}/problems/${slug}/`;
 
 function applyTheme(theme) {
   const root = document.documentElement;
@@ -174,7 +173,7 @@ function render(today) {
     ? recent.map((p) => `
         <div class="r-item" data-slug="${escapeHtml(p.slug)}">
           <div class="r-main">
-            <a class="q-title" href="${problemUrl(p.slug, meta.host)}" target="_blank" rel="noreferrer">${titleLine(p, p.slug)}</a>
+            <a class="q-title" href="${problemUrl(p.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, p.slug)}</a>
             ${patternChips(p) ? `<span class="q-meta">${patternChips(p)}</span>` : ''}
           </div>
           ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
@@ -495,7 +494,7 @@ function renderProblems(today) {
     return `
       <div class="db-item" data-slug="${escapeHtml(r.slug)}"${r.retired ? ' data-off="1"' : ''}>
         <div class="db-main">
-          <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+          <a class="q-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
           <span class="q-meta">
             <span class="db-status" data-s="${r.status}">${STATUS_LABEL[r.status]}</span>
             ${when}
@@ -566,7 +565,7 @@ function renderQueue(today, counts) {
                   title="Struggling with this one">⚑</button>
         </div>
         <div class="q-main">
-          <a class="q-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+          <a class="q-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
           <span class="q-meta">${r.needsReview ? '<span class="flagged">Needs review</span>' : ''}${when}${patternChips(p)}</span>
         </div>
         ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
@@ -595,7 +594,7 @@ function renderQueue(today, counts) {
  * that "removed" must never feel like "deleted".
  */
 function renderRetired() {
-  const { reviews, problems, meta } = state;
+  const { reviews, problems, settings, meta } = state;
   const list = retiredReviews(reviews);
   const el = $('#retired');
 
@@ -611,7 +610,7 @@ function renderRetired() {
         const p = problems[r.slug] || { title: r.slug };
         return `
           <div class="retired-item" data-slug="${escapeHtml(r.slug)}">
-            <a class="retired-title" href="${problemUrl(r.slug, meta.host)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+            <a class="retired-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
             <button class="btn btn-sm" data-act="restore">Restore</button>
           </div>`;
       }).join('')}
@@ -818,6 +817,7 @@ $('#btn-settings').addEventListener('click', () => {
   $('#f-remind').checked = s.dailyReminder;
   $('#f-hour').value = String(s.reminderHour);
   $('#f-theme').value = s.theme;
+  $('#f-link-site').value = s.linkSite;
   $('#settings-msg').textContent = '';
   dlg.showModal();
 });
@@ -854,6 +854,7 @@ $('#settings-form').addEventListener('submit', async (e) => {
     reminderHour: Number(f.get('reminderHour')),
     dayStartHour: Number(f.get('dayStartHour')),
     theme: String(f.get('theme')),
+    linkSite: String(f.get('linkSite')),
   });
 
   // Re-file before pruning: `resetHistoryFrom` compares day keys, and they have

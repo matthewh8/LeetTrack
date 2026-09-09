@@ -5,6 +5,7 @@ import { readAll, reviewAction, syncDayWindow } from '../lib/storage.js';
 import { todayKey } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
 import { dueBy } from '../lib/scheduler.js';
+import { problemUrl } from '../lib/links.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
@@ -42,7 +43,7 @@ async function render() {
         return `<div class="p-item" data-slug="${esc(r.slug)}">
           ${r.needsReview ? '<span class="p-flag" title="Marked as needing review">\u2605</span>' : ''}
           ${flagMarks(r)}
-          <a class="p-title" href="https://${meta.host || 'leetcode.com'}/problems/${esc(r.slug)}/" target="_blank" rel="noreferrer">${
+          <a class="p-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${
             p.frontendId ? `<span class="p-num tabular">${esc(p.frontendId)}.</span> ` : ''}${esc(p.title)}</a>
           <button class="btn btn-sm" data-act="delay" title="Push this to tomorrow">+1d</button>
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>

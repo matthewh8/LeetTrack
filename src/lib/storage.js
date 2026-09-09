@@ -32,6 +32,9 @@ export function defaultSettings() {
     // Hour (0-23, local) at which one day becomes the next.
     dayStartHour: DEFAULT_DAY_START_HOUR,
     theme: 'system',
+    // Which site problem links open on. 'neetcode' points at neetcode.io
+    // instead of the host you're signed into.
+    linkSite: 'leetcode',
     // Inclusive "YYYY-MM-DD" start of tracked history; null = track everything.
     trackFrom: null,
   };

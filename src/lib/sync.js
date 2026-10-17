@@ -108,11 +108,12 @@ export function mergeSnapshots(local, remote) {
   const settings = remoteSettingsWin ? remote.settings : local.settings;
 
   // Day keys depend on the day window. Rows filed under a different window
-  // can't be unioned with ours; whichever device is behind re-files its own
-  // after picking up the new settings, and the next round unions them.
+  // can't be unioned with ours, so ours stay as they are — never replaced
+  // wholesale. Whichever device is behind re-files its own after picking up
+  // the new settings, and the next round unions them.
   const days = local.dayWindow === remote.dayWindow
     ? mergeMap(local.days, remote.days, mergeDay)
-    : (remoteSettingsWin ? remote.days : local.days);
+    : local.days;
 
   const byId = new Map();
   for (const a of [...(local.attempts || []), ...(remote.attempts || [])]) {
@@ -122,7 +123,8 @@ export function mergeSnapshots(local, remote) {
 
   let merged = {
     v: SNAPSHOT_VERSION,
-    dayWindow: remoteSettingsWin ? remote.dayWindow : local.dayWindow,
+    // What `days` is filed under, which is still ours until we re-file.
+    dayWindow: local.dayWindow,
     settings,
     problems: mergeMap(local.problems, remote.problems, mergeProblem),
     reviews: mergeMap(local.reviews, remote.reviews, mergeReview),

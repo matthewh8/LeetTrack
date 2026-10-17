@@ -5,7 +5,7 @@ import { dayKey, localTimeZone, isValidTimeZone, normaliseHour } from './time.js
 import { DEFAULT_INTERVALS, scheduleFirst, applyReview, setFlag, parseIntervals } from './scheduler.js';
 import { pruneState } from './prune.js';
 import { rekeyState } from './rekey.js';
-import { toSnapshot, canonical } from './sync.js';
+import { toSnapshot, canonical, mergeSnapshots } from './sync.js';
 
 const NS = 'leettrack:v1:';
 export const KEYS = {
@@ -364,7 +364,10 @@ export async function importAll(payload, { merge = false } = {}) {
     [KEYS.days]: pick('days', {}),
     [KEYS.reviews]: pick('reviews', {}),
     [KEYS.attempts]: (pick('attempts', []) || []).slice(-ATTEMPT_CAP),
-    [KEYS.settings]: withDefaults(incoming.settings),
+    // Stamped: importing is a deliberate "these are my settings", and it has
+    // to beat whatever another device saved before it. Records keep their own
+    // stamps and merge with the other device's as usual.
+    [KEYS.settings]: stamp(withDefaults(incoming.settings)),
     [KEYS.meta]: {
       schemaVersion: SCHEMA_VERSION,
       importedAt: Date.now(),
@@ -446,13 +449,18 @@ export const SYNCED_KEYS = [KEYS.problems, KEYS.reviews, KEYS.days, KEYS.setting
 /**
  * Write back the result of a merge, touching only the keys that changed so an
  * unchanged merge fires no storage events (and so no further sync round).
+ *
+ * Merged again with what is stored now, not just written over it: anything
+ * saved locally while the round was in flight (a review, an import) would
+ * otherwise be reverted to the state the round started from.
  */
 export async function applyMergedSnapshot(merged) {
   const current = toSnapshot(await readAll(), ATTEMPT_CAP);
+  const target = mergeSnapshots(current, merged);
   const next = {};
   for (const name of ['problems', 'reviews', 'days', 'settings', 'attempts']) {
-    if (canonical(current[name]) !== canonical(merged[name])) {
-      next[`${NS}${name}`] = name === 'settings' ? withDefaults(merged.settings) : merged[name];
+    if (canonical(current[name]) !== canonical(target[name])) {
+      next[`${NS}${name}`] = name === 'settings' ? withDefaults(target.settings) : target[name];
     }
   }
   if (Object.keys(next).length) await chrome.storage.local.set(next);

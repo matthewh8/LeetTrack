@@ -45,11 +45,14 @@ async function round() {
   const merged = mergeSnapshots(local, remote);
 
   const wrote = await applyMergedSnapshot(merged);
-  if (wrote && merged.dayWindow !== local.dayWindow) await syncDayWindow();
+  // New settings from the other device may move the day window; re-file our
+  // days before sending them, so they're filed the way the settings say.
+  await syncDayWindow();
 
-  // Compare what would be pushed against what is there, not the whole merged
-  // state: the remote copy only ever holds the trimmed snapshot.
-  const { snap: outgoing, chunks } = await fitSnapshot(merged, encodeSnapshot);
+  // Push what is stored now, which includes anything saved during the round.
+  // Compare it against what is there, not the whole state: the remote copy
+  // only ever holds the trimmed snapshot.
+  const { snap: outgoing, chunks } = await fitSnapshot(await readAll(), encodeSnapshot);
   const pushed = !remote || canonical(outgoing) !== canonical(toSnapshot(remote, outgoing.attempts.length));
   if (pushed) await writeRemote(chunks, head);
 

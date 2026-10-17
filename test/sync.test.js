@@ -51,6 +51,21 @@ test('days filed under another day window are not unioned', () => {
   assert.deepEqual(Object.keys(mergeSnapshots(a, b).days), ['2026-10-01']);
 });
 
+test('newer settings from another day window never wipe our days', () => {
+  const ours = snap({
+    dayWindow: '1|America/New_York',
+    settings: settings({ dayStartHour: 1 }),
+    problems: { a: { slug: 'a' } },
+    days: { '2026-10-01': { attempts: 1, accepted: 1, solved: 1, slugs: ['a'] } },
+  });
+  const theirs = snap({ settings: settings({ theme: 'dark', modAt: 999 }) });
+  const m = mergeSnapshots(ours, theirs);
+  assert.equal(m.settings.theme, 'dark');
+  assert.deepEqual(Object.keys(m.days), ['2026-10-01']);
+  // Still describes how `days` is filed, until this device re-files it.
+  assert.equal(m.dayWindow, '1|America/New_York');
+});
+
 test('attempts are de-duplicated by id', () => {
   const at = (id, t) => ({ id, slug: 's', at: t, day: '2026-10-01', verdict: 'Accepted' });
   const m = mergeSnapshots(snap({ attempts: [at('1', 1), at('2', 2)] }), snap({ attempts: [at('2', 2), at('3', 3)] }));

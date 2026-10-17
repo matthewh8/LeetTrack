@@ -5,6 +5,7 @@ import { dayKey, localTimeZone, isValidTimeZone, normaliseHour } from './time.js
 import { DEFAULT_INTERVALS, scheduleFirst, applyReview, setFlag, parseIntervals } from './scheduler.js';
 import { pruneState } from './prune.js';
 import { rekeyState } from './rekey.js';
+import { toSnapshot, canonical } from './sync.js';
 
 const NS = 'leettrack:v1:';
 export const KEYS = {
@@ -18,6 +19,10 @@ export const KEYS = {
 
 export const SCHEMA_VERSION = 1;
 const ATTEMPT_CAP = 5000;
+
+// Every record written here is stamped, so two devices' copies can be merged
+// record by record: the later edit wins. See sync.js.
+const stamp = (record) => ({ ...record, modAt: Date.now() });
 
 // A day rolls over at 2am, not midnight: a problem solved at 1am belongs to the
 // session that's still going, not to the day that just started.
@@ -78,7 +83,7 @@ export async function getSettings() {
 }
 
 export async function saveSettings(patch) {
-  const next = withDefaults({ ...(await getSettings()), ...patch });
+  const next = stamp(withDefaults({ ...(await getSettings()), ...patch }));
   await chrome.storage.local.set({ [KEYS.settings]: next });
   return next;
 }
@@ -130,6 +135,7 @@ export async function recordSubmission(sub) {
     runtimeMs: sub.runtimeMs ?? null,
     memoryKb: sub.memoryKb ?? null,
     source: sub.source || 'unknown',
+    modAt: Date.now(),
   };
 
   const attempts = [...state.attempts, attempt]
@@ -148,6 +154,7 @@ export async function recordSubmission(sub) {
       accepted: day.accepted + (accepted ? 1 : 0),
       solved: slugs.size,
       slugs: [...slugs],
+      modAt: Date.now(),
     },
   };
 
@@ -174,9 +181,10 @@ export async function recordSubmission(sub) {
       firstSolvedAt: prev?.firstSolvedAt || at,
       lastSolvedAt: Math.max(prev?.lastSolvedAt || 0, at),
       solveCount: (prev?.solveCount || 0) + 1,
+      modAt: Date.now(),
     };
     if (!reviews[sub.slug]) {
-      reviews[sub.slug] = scheduleFirst(sub.slug, key, settings.intervals);
+      reviews[sub.slug] = stamp(scheduleFirst(sub.slug, key, settings.intervals));
     }
   }
 
@@ -195,7 +203,7 @@ export async function enrichProblem(slug, fields) {
   const raw = await get(KEYS.problems);
   const problems = raw[KEYS.problems] || {};
   if (!problems[slug]) return false;
-  problems[slug] = { ...problems[slug], ...fields };
+  problems[slug] = stamp({ ...problems[slug], ...fields });
   await chrome.storage.local.set({ [KEYS.problems]: problems });
   return true;
 }
@@ -221,7 +229,7 @@ export async function setTagHidden(slug, tag, hidden) {
   if (hidden) current.add(name);
   else current.delete(name);
 
-  const next = { ...problem, hiddenTags: [...current] };
+  const next = stamp({ ...problem, hiddenTags: [...current] });
   await chrome.storage.local.set({ [KEYS.problems]: { ...problems, [slug]: next } });
   return next;
 }
@@ -232,7 +240,7 @@ export async function restoreTags(slug) {
   const problems = raw[KEYS.problems] || {};
   const problem = problems[slug];
   if (!problem?.hiddenTags?.length) return problem || null;
-  const next = { ...problem, hiddenTags: [] };
+  const next = stamp({ ...problem, hiddenTags: [] });
   await chrome.storage.local.set({ [KEYS.problems]: { ...problems, [slug]: next } });
   return next;
 }
@@ -242,7 +250,7 @@ export async function reviewAction(slug, action, opts = {}) {
   const review = reviews[slug];
   if (!review) return null;
   const today = dayKey(new Date(), settings.timezone, settings.dayStartHour);
-  const next = applyReview(review, action, today, settings.intervals, opts);
+  const next = stamp(applyReview(review, action, today, settings.intervals, opts));
   await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
   return next;
 }
@@ -257,7 +265,7 @@ export async function setNeedsReview(slug, on) {
   if (!reviews[slug] && !problems[slug]) return null;
   const today = dayKey(new Date(), settings.timezone, settings.dayStartHour);
   const review = reviews[slug] || scheduleFirst(slug, today, settings.intervals);
-  const next = applyReview(review, on ? 'flag' : 'unflag', today, settings.intervals);
+  const next = stamp(applyReview(review, on ? 'flag' : 'unflag', today, settings.intervals));
   await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
   return next;
 }
@@ -272,7 +280,7 @@ export async function setReviewFlag(slug, flag, value) {
   const { reviews } = await readAll();
   const review = reviews[slug];
   if (!review) return null;
-  const next = setFlag(review, flag, value);
+  const next = stamp(setFlag(review, flag, value));
   await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
   return next;
 }
@@ -289,7 +297,7 @@ export async function setRetired(slug, on) {
   if (!reviews[slug] && !problems[slug]) return null;
   const today = dayKey(new Date(), settings.timezone, settings.dayStartHour);
   const review = reviews[slug] || scheduleFirst(slug, today, settings.intervals);
-  const next = applyReview(review, on ? 'retire' : 'restore', today, settings.intervals);
+  const next = stamp(applyReview(review, on ? 'retire' : 'restore', today, settings.intervals));
   await chrome.storage.local.set({ [KEYS.reviews]: { ...reviews, [slug]: next } });
   return next;
 }
@@ -387,7 +395,7 @@ export async function resetHistoryFrom(fromKey) {
     [KEYS.attempts]: state.attempts,
     [KEYS.days]: state.days,
     [KEYS.reviews]: state.reviews,
-    [KEYS.settings]: withDefaults({ ...current.settings, trackFrom: from }),
+    [KEYS.settings]: stamp(withDefaults({ ...current.settings, trackFrom: from })),
   });
   await patchMeta({ historyResetAt: Date.now(), trackFrom: from });
 
@@ -408,7 +416,7 @@ export async function backfillOriginSite() {
   let patched = 0;
   for (const slug of ncSlugs) {
     if (problems[slug] && !problems[slug].originSite) {
-      problems[slug] = { ...problems[slug], originSite: 'neetcode' };
+      problems[slug] = stamp({ ...problems[slug], originSite: 'neetcode' });
       patched++;
     }
   }
@@ -425,9 +433,30 @@ export async function markNeetCodeOnly(slug) {
   const raw = await get(KEYS.problems);
   const problems = raw[KEYS.problems] || {};
   if (!problems[slug] || problems[slug].neetcodeOnly) return false;
-  problems[slug] = { ...problems[slug], neetcodeOnly: true, lcMissing: true, originSite: 'neetcode' };
+  problems[slug] = stamp({ ...problems[slug], neetcodeOnly: true, lcMissing: true, originSite: 'neetcode' });
   await chrome.storage.local.set({ [KEYS.problems]: problems });
   return true;
+}
+
+// ---- device sync ----
+
+/** The keys whose changes another device needs to hear about. */
+export const SYNCED_KEYS = [KEYS.problems, KEYS.reviews, KEYS.days, KEYS.settings, KEYS.attempts];
+
+/**
+ * Write back the result of a merge, touching only the keys that changed so an
+ * unchanged merge fires no storage events (and so no further sync round).
+ */
+export async function applyMergedSnapshot(merged) {
+  const current = toSnapshot(await readAll(), ATTEMPT_CAP);
+  const next = {};
+  for (const name of ['problems', 'reviews', 'days', 'settings', 'attempts']) {
+    if (canonical(current[name]) !== canonical(merged[name])) {
+      next[`${NS}${name}`] = name === 'settings' ? withDefaults(merged.settings) : merged[name];
+    }
+  }
+  if (Object.keys(next).length) await chrome.storage.local.set(next);
+  return Object.keys(next).length;
 }
 
 export async function clearAll() {

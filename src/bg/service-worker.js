@@ -2,8 +2,9 @@
 
 import {
   recordSubmission, enrichProblem, readAll, getSettings, patchMeta, reviewAction, syncDayWindow,
-  backfillOriginSite, markNeetCodeOnly,
+  backfillOriginSite, markNeetCodeOnly, SYNCED_KEYS,
 } from '../lib/storage.js';
+import { syncDevices, SYNC_PREFIX } from '../lib/cloud.js';
 import { HOSTS, fetchUserStatus, fetchRecentAccepted, fetchQuestion } from '../lib/leetcode-api.js';
 import { dayKey } from '../lib/time.js';
 import { dueBy } from '../lib/scheduler.js';
@@ -18,6 +19,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   await syncDayWindow().catch(() => {});
   await backfillOriginSite().catch(() => {});
   await scheduleAlarms();
+  syncDevices().catch(() => {});
   enrichPending().catch(() => {});
   syncRecent().then(
     () => patchMeta({ lastSyncError: null }),
@@ -28,6 +30,21 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onStartup.addListener(async () => {
   await syncDayWindow().catch(() => {});
   scheduleAlarms().catch(() => {});
+  syncDevices().catch(() => {});
+});
+
+// Push local edits and pull the other device's, a few seconds after the last
+// change so a burst of writes (one solve touches four keys) is one round.
+let deviceSyncTimer = null;
+function scheduleDeviceSync(delayMs = 3000) {
+  clearTimeout(deviceSyncTimer);
+  deviceSyncTimer = setTimeout(() => syncDevices().catch(() => {}), delayMs);
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  const keys = Object.keys(changes);
+  if (area === 'local' && keys.some((k) => SYNCED_KEYS.includes(k))) scheduleDeviceSync();
+  if (area === 'sync' && keys.some((k) => k.startsWith(SYNC_PREFIX))) scheduleDeviceSync(1000);
 });
 
 async function scheduleAlarms() {
@@ -48,10 +65,13 @@ async function ensureAlarms() {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   ensureAlarms().catch(() => {});
-  if (alarm.name === SYNC_ALARM) syncRecent().then(
-    () => patchMeta({ lastSyncError: null }),
-    (err) => patchMeta({ lastSyncError: err?.message || String(err), lastSyncErrorAt: Date.now() }),
-  );
+  if (alarm.name === SYNC_ALARM) {
+    syncRecent().then(
+      () => patchMeta({ lastSyncError: null }),
+      (err) => patchMeta({ lastSyncError: err?.message || String(err), lastSyncErrorAt: Date.now() }),
+    );
+    syncDevices().catch(() => {});
+  }
   if (alarm.name === REMINDER_ALARM) maybeRemind().catch(() => {});
 });
 
@@ -79,6 +99,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg?.type === 'leettrack:sync') {
         const n = await syncRecent();
         await patchMeta({ lastSyncError: null });
+        await syncDevices().catch(() => {});
         sendResponse({ ok: true, imported: n });
         return;
       }

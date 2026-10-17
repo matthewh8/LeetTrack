@@ -4,9 +4,11 @@ A local-only Chrome extension that turns LeetCode practice into something you ca
 actually see: a **streak**, your **submission quality**, and a **spaced-repetition
 review schedule** so solved problems don't quietly evaporate.
 
-Everything lives in `chrome.storage.local`. There is no server, no account, and no
-telemetry. The only network requests the extension makes are to LeetCode itself,
-using the session you're already signed in with.
+Everything lives in `chrome.storage.local`, and a compact copy rides along in
+`chrome.storage.sync` so every Chrome signed into your Google account shows the
+same progress. There is no server of its own, no account, and no telemetry. The
+only network requests the extension makes are to LeetCode and NeetCode, using
+the session you're already signed in with.
 
 ![LeetTrack dashboard](docs/dashboard-dark.png)
 
@@ -126,9 +128,10 @@ streaks stay correct.
 
 ```
 manifest.json
-src/lib/        time, streak, scheduler, stats, prune, rekey, search
+src/lib/        time, streak, scheduler, stats, prune, rekey, search, sync
                                         (pure — no chrome.*, tested)
-                storage, leetcode-api   (the only chrome.* / network layers)
+                storage, cloud, leetcode-api
+                                        (the only chrome.* / network layers)
 src/content/    interceptor (MAIN world), bridge (isolated)
 src/bg/         service worker — messaging, sync alarm, reminders
 src/ui/         dashboard + popup, components/
@@ -198,6 +201,27 @@ which had the same staleness problem and was never re-applied before. Days
 older than the oldest surviving attempt are left alone: attempts are capped at
 5000, and there is no evidence left to re-file them with.
 
+## Syncing between devices
+
+Sign into Chrome with the same Google account on each machine (with sync on)
+and load the extension unpacked on each. That's all: solves, reviews, flags,
+tag edits and settings follow you within a few seconds of the change.
+
+- The manifest pins a `key`, so the extension has the same ID on every machine
+  (`hmngeifaehaecggldkkgcoehmonlgneb`). Chrome only syncs between copies with
+  the same ID; without the key, an unpacked extension's ID depends on the folder
+  it was loaded from.
+- Sync merges record by record, not device by device. Every row carries the
+  time it was last edited, and the later edit wins, so a review done on the
+  laptop and a solve recorded on the desktop both survive.
+- Chrome sync holds about 100KB, so the copy that travels is gzipped and carries
+  only the latest 500 attempts. The full attempt log stays on the device that
+  recorded it; problems, reviews and the heatmap's day rollup always sync whole.
+- `Track from` resets propagate: the other device trims its older rows once it
+  sees the new start date.
+- Code changes still need `chrome://extensions` → reload on each machine.
+  Data never does.
+
 ## Starting over
 
 `Settings → Track from` sets the first day that counts. Saving a date does two
@@ -237,7 +261,8 @@ identity and color stays out of it.
 
 ## Privacy
 
-- No remote server, no analytics, no account.
+- No remote server, no analytics, no account. Device sync goes through Chrome's
+  own sync for your Google account, the same place your bookmarks live.
 - Requests go only to `leetcode.com` / `leetcode.cn`, authenticated by the cookie
   your browser already sends. The extension never reads or stores that cookie.
 - `Export JSON` writes a file locally; `Import JSON` reads one back.

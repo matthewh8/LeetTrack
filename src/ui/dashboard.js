@@ -214,6 +214,12 @@ function render(today) {
       syncNote.classList.add('sync-warn');
     }
   }
+  if (meta.deviceSyncError) {
+    syncNote.textContent += ` · Device sync failed: ${meta.deviceSyncError}`;
+    syncNote.classList.add('sync-warn');
+  } else if (meta.deviceSyncAt) {
+    syncNote.textContent += ` · devices synced ${relativeDay(dayOf(meta.deviceSyncAt, settings.timezone), today)}`;
+  }
 }
 
 /**

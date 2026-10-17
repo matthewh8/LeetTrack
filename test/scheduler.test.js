@@ -306,3 +306,22 @@ test('a retired problem stays off the calendar until it is restored', () => {
   assert.equal(applyReview(retired, 'skip', '2026-09-02', I).retired, true);
   assert.equal(applyReview(retired, 'done', '2026-09-02', I).retired, true);
 });
+
+test('moving a review changes only its date, never its place on the ladder', () => {
+  const r0 = { slug: 'x', stage: 3, dueOn: '2026-09-10', lastReviewedAt: '2026-08-27', needsReview: true, history: [] };
+  const r = applyReview(r0, 'move', '2026-09-02', I, { to: '2026-09-05' });
+  assert.equal(r.dueOn, '2026-09-05');
+  assert.equal(r.stage, 3);
+  assert.equal(r.lastReviewedAt, '2026-08-27');
+  assert.equal(r.needsReview, true);
+  assert.deepEqual(r.history.at(-1), { on: '2026-09-02', action: 'move', from: '2026-09-10', to: '2026-09-05' });
+  // The next "Done" still climbs from stage 3.
+  assert.equal(applyReview(r, 'done', '2026-09-05', I).stage, 4);
+});
+
+test('moving into the past lands on today, and a bad date is a no-op', () => {
+  const r0 = { slug: 'x', stage: 1, dueOn: '2026-09-10', history: [] };
+  assert.equal(applyReview(r0, 'move', '2026-09-02', I, { to: '2026-08-01' }).dueOn, '2026-09-02');
+  assert.equal(applyReview(r0, 'move', '2026-09-02', I, { to: 'soon' }), r0);
+  assert.equal(applyReview(r0, 'move', '2026-09-02', I, { to: '2026-09-10' }), r0);
+});

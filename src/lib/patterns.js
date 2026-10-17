@@ -146,6 +146,9 @@ export function hasTag(problem, tag) {
  */
 export function needsEnrichment(problems, limit = 10) {
   return Object.values(problems)
+    // LeetCode has already said it has no such problem; asking again every
+    // sync would just crowd out the ones that can be filled in.
+    .filter((p) => !p.lcMissing)
     .filter((p) => !p.topicTags?.length || !p.difficulty || !p.frontendId)
     .slice(0, limit)
     .map((p) => p.slug);

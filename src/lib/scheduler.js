@@ -70,12 +70,16 @@ function pushFrom(review, todayK) {
  * `retire` -> stop scheduling it: off the calendar and out of the queue, but
  *             still solved and still counted everywhere else
  * `restore` -> put it back on the schedule
+ * `move`   -> reschedule to `opts.to` (a day key) — the drag-and-drop on the
+ *             calendar. Only the date changes: stage, last review and the
+ *             needs-review mark are untouched, so the ladder carries on from
+ *             wherever the problem actually is next time it's reviewed.
  *
  * @param {object} review
  * @param {'done'|'ace'|'again'|'delay'|'snooze'|'skip'|'flag'|'unflag'} action
  * @param {string} todayK
  * @param {number[]} intervals
- * @param {{days?:number}} [opts]
+ * @param {{days?:number, to?:string}} [opts]
  */
 export function applyReview(review, action, todayK, intervals, opts = {}) {
   const log = (entry) => [...(review.history || []), { on: todayK, ...entry }].slice(-50);
@@ -138,6 +142,15 @@ export function applyReview(review, action, todayK, intervals, opts = {}) {
 
   if (action === 'flag' || action === 'unflag') {
     return { ...review, needsReview: action === 'flag', history: log({ action }) };
+  }
+
+  if (action === 'move') {
+    // Never into the past: a date before today would just read as overdue.
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(opts.to || '') ? opts.to : null;
+    if (!to) return review;
+    const dueOn = to < todayK ? todayK : to;
+    if (dueOn === review.dueOn) return review;
+    return { ...review, dueOn, history: log({ action, from: review.dueOn, to: dueOn }) };
   }
 
   if (action === 'retire') {

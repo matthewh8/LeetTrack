@@ -5,7 +5,13 @@ import { monthDays, weekdayOf, shiftMonth } from '../../lib/time.js';
 
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-export function renderCalendar(root, { monthKey, dueCounts, today, selected, onSelect, onMonth, tip }) {
+// The MIME type a queue row puts on a drag. Anything else dropped on the
+// calendar — a link, a file, text from another tab — is ignored.
+export const DRAG_TYPE = 'application/x-leettrack-slug';
+
+const isOurs = (e) => e.dataTransfer?.types?.includes(DRAG_TYPE);
+
+export function renderCalendar(root, { monthKey, dueCounts, today, selected, onSelect, onMonth, onDrop, tip }) {
   const head = document.createElement('div');
   head.className = 'cal-head';
   const label = new Date(`${monthKey}-01T00:00:00Z`).toLocaleDateString(undefined, {
@@ -23,6 +29,20 @@ export function renderCalendar(root, { monthKey, dueCounts, today, selected, onS
     if (!nav) return;
     onMonth(nav === 'today' ? today.slice(0, 7) : shiftMonth(monthKey, Number(nav)));
   });
+
+  // Holding a dragged problem over ‹ or › turns the page, so a review can be
+  // carried into next month without letting go of it.
+  let flip = null;
+  const stopFlip = () => { clearTimeout(flip); flip = null; };
+  head.addEventListener('dragover', (e) => {
+    const nav = e.target.closest('[data-nav="-1"], [data-nav="1"]')?.dataset.nav;
+    if (!nav || !isOurs(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!flip) flip = setTimeout(() => { flip = null; onMonth(shiftMonth(monthKey, Number(nav))); }, 550);
+  });
+  head.addEventListener('dragleave', stopFlip);
+  head.addEventListener('drop', stopFlip);
 
   const grid = document.createElement('div');
   grid.className = 'cal-grid';
@@ -53,17 +73,32 @@ export function renderCalendar(root, { monthKey, dueCounts, today, selected, onS
     cell.setAttribute('aria-label', `${key}, ${text}`);
     if (tip) tip.bind(cell, () => `<b>${key}</b><br><span class="t-sub">${text}</span>`);
     cell.addEventListener('click', () => onSelect(key));
+    if (onDrop && key >= today) {
+      cell.dataset.drop = '1';
+      cell.addEventListener('dragover', (e) => {
+        if (!isOurs(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        cell.dataset.over = '1';
+      });
+      cell.addEventListener('dragleave', () => { delete cell.dataset.over; });
+      cell.addEventListener('drop', (e) => {
+        if (!isOurs(e)) return;
+        e.preventDefault();
+        delete cell.dataset.over;
+        const slug = e.dataTransfer.getData(DRAG_TYPE);
+        if (slug) onDrop(key, slug);
+      });
+    }
     grid.appendChild(cell);
   }
 
-  // The month's own total, because the point of a month view is the shape of
-  // the load ahead and counting 30 badges by eye is not that.
-  const total = keys.reduce((sum, k) => sum + (dueCounts[k] || 0), 0);
-  const foot = document.createElement('p');
-  foot.className = 'cal-foot';
-  foot.textContent = total
-    ? `${total} review${total === 1 ? '' : 's'} this month`
-    : 'Nothing scheduled this month';
-
-  root.replaceChildren(head, grid, foot);
+  const parts = [head, grid];
+  if (onDrop) {
+    const hint = document.createElement('p');
+    hint.className = 'cal-hint';
+    hint.textContent = 'Drag a review onto a day to move it. Its cycle stays the same.';
+    parts.push(hint);
+  }
+  root.replaceChildren(...parts);
 }

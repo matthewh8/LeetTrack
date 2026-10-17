@@ -151,7 +151,7 @@ const browser = await chromium.launch({
 });
 const errors = [];
 
-async function shot(path, file, { width, height, dark, full, open }) {
+async function shot(path, file, { width, height, dark, full, open, hover }) {
   const ctx = await browser.newContext({
     viewport: { width, height },
     colorScheme: dark ? 'dark' : 'light',
@@ -186,6 +186,10 @@ async function shot(path, file, { width, height, dark, full, open }) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 1) errors.push(`[${file}] horizontal overflow of ${overflow}px`);
 
+  if (hover) {
+    await page.hover(hover);
+    await page.waitForTimeout(250);
+  }
   if (open) {
     await page.click(open);
     await page.waitForTimeout(250);
@@ -200,7 +204,13 @@ await shot('src/ui/dashboard.html', 'dashboard-light.png', { width: 1280, height
 await shot('src/ui/dashboard.html', 'dashboard-dark.png', { width: 1280, height: 1400, dark: true, full: true });
 await shot('src/ui/dashboard.html', 'dashboard-narrow.png', { width: 560, height: 1000, dark: false, full: true });
 await shot('src/ui/dashboard.html', 'settings.png', { width: 900, height: 760, dark: false, open: '#btn-settings' });
-await shot('src/ui/dashboard.html', 'row-menu.png', { width: 1100, height: 900, dark: true, open: '.q-item .menu > summary' });
+await shot('src/ui/dashboard.html', 'row-menu.png', { width: 1100, height: 900, dark: true, open: '#queue tr:last-child .menu > summary' });
+await shot('src/ui/dashboard.html', 'retired-tab.png', { width: 1100, height: 800, dark: false, open: '.tab-btn[data-tab="retired"]' });
+await shot('src/ui/dashboard.html', 'streak-hover.png', { width: 1100, height: 400, dark: false, hover: '#streak' });
+await shot('src/ui/dashboard.html', 'problems-tab.png', { width: 1280, height: 900, dark: false, open: '.tab-btn[data-tab="problems"]' });
+await shot('src/ui/dashboard.html', 'other-day.png', { width: 1280, height: 900, dark: false, open: '.cal-day[data-due="1"]:not([data-today])' });
+await shot('src/ui/dashboard.html', 'activity-light.png', { width: 1280, height: 700, dark: false, open: '.tab-btn[data-tab="activity"]' });
+await shot('src/ui/dashboard.html', 'activity-dark.png', { width: 1280, height: 700, dark: true, open: '.tab-btn[data-tab="activity"]' });
 await shot('src/ui/popup.html', 'popup-dark.png', { width: 340, height: 300, dark: true });
 
 await browser.close();
@@ -210,4 +220,4 @@ if (errors.length) {
   console.error('Render problems:\n' + errors.map((e) => `  - ${e}`).join('\n'));
   process.exit(1);
 }
-console.log(`rendered 6 screenshots into ${OUT}`);
+console.log(`rendered 12 screenshots into ${OUT}`);

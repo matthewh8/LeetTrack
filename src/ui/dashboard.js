@@ -1,12 +1,13 @@
 import {
   readAll, saveSettings, reviewAction, setNeedsReview, setRetired, syncDayWindow,
   setTagHidden, restoreTags, setReviewFlag, exportAll, importAll, resetHistoryFrom, normaliseDayKey,
+  recordSubmission, enrichProblem,
 } from '../lib/storage.js';
 import { todayKey, dayKey, addDays, diffDays, hourLabel } from '../lib/time.js';
 import { computeStreak } from '../lib/streak.js';
 import {
   dueBy, dueCountsByDay, flaggedReviews, retiredReviews, activeReviews,
-  intervalAt, normaliseDelay, DELAY_PRESETS,
+  intervalAt,
 } from '../lib/scheduler.js';
 import { difficultyCounts, recentSolves, DIFFICULTIES } from '../lib/stats.js';
 import {
@@ -16,7 +17,7 @@ import {
   patternsOf, patternCounts, tagCounts, visibleTags, hiddenTags, hasTag,
 } from '../lib/patterns.js';
 import { renderHeatmap } from './components/heatmap.js';
-import { renderCalendar } from './components/calendar.js';
+import { renderCalendar, DRAG_TYPE } from './components/calendar.js';
 import { createTooltip } from './components/tooltip.js';
 import { problemUrl } from '../lib/links.js';
 
@@ -24,25 +25,44 @@ const $ = (sel) => document.querySelector(sel);
 const tip = createTooltip();
 
 const view = {
+  tab: sessionStorage.getItem('leettrack:tab') || 'queue',
   month: null, selected: null, showAllQueue: false, openMenu: null,
-  // Group filter: a topic tag and a difficulty, both 'all' when off. It applies
-  // to the whole Reviews card — calendar, count, and queue — because a calendar
-  // that disagreed with the list under it would just be a bug you have to
-  // remember.
   group: 'all', difficulty: 'all',
-  // All problems: its own text search, status filter and sort order. The group
-  // and difficulty above are shared with the Reviews card rather than
-  // duplicated — one filter, two places it is shown and can be set.
   q: '', status: 'all', sort: 'recent', dbLimit: 0,
 };
 
 const DB_PAGE = 25;
 let state = null;
 
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+const isDark = () => (state?.settings.theme === 'system' || !state
+  ? darkQuery.matches : state.settings.theme === 'dark');
+
 function applyTheme(theme) {
   const root = document.documentElement;
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;
+  // Sun in the dark, moon in the light: the icon is where a click takes you.
+  const dark = theme === 'system' ? darkQuery.matches : theme === 'dark';
+  const btn = document.querySelector('#btn-theme');
+  btn.dataset.mode = dark ? 'dark' : 'light';
+  const label = dark ? 'Switch to light mode' : 'Switch to dark mode';
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+}
+darkQuery.addEventListener('change', () => { if (state) applyTheme(state.settings.theme); });
+
+function switchTab(tab) {
+  view.tab = tab;
+  sessionStorage.setItem('leettrack:tab', tab);
+  for (const btn of document.querySelectorAll('.tab-btn')) {
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', String(active));
+  }
+  for (const panel of document.querySelectorAll('.tab-panel')) {
+    panel.classList.toggle('active', panel.dataset.tab === tab);
+  }
 }
 
 function relativeDay(key, today) {
@@ -62,6 +82,7 @@ async function load() {
   const today = todayKey(state.settings.timezone, state.settings.dayStartHour);
   if (!view.month) view.month = today.slice(0, 7);
   if (!view.selected) view.selected = today;
+  switchTab(view.tab);
   render(today);
 }
 
@@ -69,9 +90,13 @@ function render(today) {
   const { days, problems, reviews, settings, meta } = state;
 
   // ---- streak ----
+  // A flame by Sync now: lit once today's problem is in, grey until then —
+  // the streak is still alive, it just hasn't been kept today.
   const streak = computeStreak(days, today);
   $('#streak-n').textContent = streak.current;
-  $('#streak-unit').textContent = streak.current === 1 ? 'day' : 'days';
+  $('#streak').dataset.lit = streak.solvedToday ? '1' : '0';
+  $('#streak').setAttribute('aria-label', `${streak.current}-day streak, ${
+    streak.solvedToday ? 'solved today' : 'not solved yet today'}`);
   $('#streak-longest').textContent = streak.longest;
   $('#streak-active').textContent = streak.activeDays;
   $('#streak-sub').textContent = !streak.current
@@ -110,13 +135,11 @@ function render(today) {
     .join('');
 
   // ---- reviews ----
-  // Everything in this card is drawn from the filtered set, so the calendar,
-  // the count, and the list can never tell three different stories.
   renderFilters();
-  const shown = filterReviews(reviews);
+  const shown = reviews;
   const due = dueBy(shown, today);
   const counts = dueCountsByDay(shown);
-  $('#due-n').textContent = due.length;
+  renderCounts(today, due.length);
   const overdue = due.filter((r) => r.dueOn < today && !r.needsReview).length;
   const flagged = flaggedReviews(shown).length;
   const notes = [];
@@ -124,35 +147,11 @@ function render(today) {
   if (flagged) notes.push(`${flagged} marked needs review`);
   $('#due-sub').textContent = !Object.keys(reviews).length
     ? 'Reviews are scheduled automatically when you solve something.'
-    : due.length
-      ? (notes.length ? notes.join(' · ') : 'Scheduled for today')
-      : filterActive()
-        ? 'Nothing due in this group.'
-        : 'Nothing due — next one is later.';
+    : (due.length && view.selected === today ? notes.join(' · ') : '');
 
-  const upcoming = activeReviews(shown)
-    .filter((r) => r.dueOn > today)
-    .sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0];
-  const scheduled = activeReviews(shown).length;
-  const total = activeReviews(reviews).length;
-  $('#rev-note').textContent = [
-    filterActive()
-      ? `${scheduled} of ${total} on the schedule`
-      : (scheduled ? `${scheduled} on the schedule` : ''),
-    upcoming ? `next ${relativeDay(upcoming.dueOn, today)}` : '',
-  ].filter(Boolean).join(' · ');
-
-  renderCalendar($('#calendar'), {
-    monthKey: view.month,
-    dueCounts: counts,
-    today,
-    selected: view.selected,
-    tip,
-    onSelect: (key) => { view.selected = key; render(today); },
-    onMonth: (m) => { view.month = m; render(today); },
-  });
-  renderQueue(today, counts);
-  renderRetired();
+  drawCalendar(today, counts);
+  renderQueue(today);
+  renderRetired(today);
 
   // ---- heatmap ----
   const first = Object.keys(days).sort()[0];
@@ -173,15 +172,15 @@ function render(today) {
     ? recent.map((p) => `
         <div class="r-item" data-slug="${escapeHtml(p.slug)}">
           <div class="r-main">
-            <a class="q-title" href="${problemUrl(p.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, p.slug)}</a>
+            <a class="q-title" href="${problemUrl(p.slug, meta.host, p)}" target="_blank" rel="noreferrer">${titleLine(p, p.slug)}</a>
             ${patternChips(p) ? `<span class="q-meta">${patternChips(p)}</span>` : ''}
           </div>
           ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
           <span class="r-when">${relativeDay(dayOf(p.lastSolvedAt, state.settings.timezone), today)}</span>
           ${flagButton(reviews[p.slug])}
-          ${recentMenu(p.slug, reviews[p.slug], settings.intervals)}
+          ${recentMenu(p.slug, reviews[p.slug])}
         </div>`).join('')
-    : '<p class="empty">Solve a problem on LeetCode and it will appear here.</p>';
+    : '<p class="empty">Solve a problem on LeetCode or NeetCode and it will appear here.</p>';
 
   // ---- all problems ----
   renderProblems(today);
@@ -198,9 +197,63 @@ function render(today) {
   }
 
   // ---- sync note ----
-  $('#sync-note').textContent = meta.username
-    ? `Signed in as ${meta.username}${meta.lastSyncAt ? ` · synced ${relativeDay(dayOf(meta.lastSyncAt, settings.timezone), today)}` : ''}`
-    : 'Open LeetCode while signed in to start tracking.';
+  const syncNote = $('#sync-note');
+  if (!meta.username) {
+    syncNote.textContent = 'Open LeetCode or NeetCode while signed in to start tracking.';
+    syncNote.className = '';
+  } else {
+    const parts = [`Signed in as ${meta.username}`];
+    if (meta.lastSyncAt) parts.push(`synced ${relativeDay(dayOf(meta.lastSyncAt, settings.timezone), today)}`);
+    syncNote.textContent = parts.join(' · ');
+    syncNote.className = '';
+    if (meta.lastSyncError) {
+      syncNote.textContent += ` · Last sync failed: ${meta.lastSyncError}`;
+      syncNote.classList.add('sync-warn');
+    } else if (meta.lastSyncAt && Date.now() - meta.lastSyncAt > 90 * 60_000) {
+      syncNote.textContent += ' · Sync may be stalled — try reloading the extension';
+      syncNote.classList.add('sync-warn');
+    }
+  }
+}
+
+/**
+ * The month grid. Paging months redraws only the calendar: the queue doesn't
+ * depend on the month, and a drag in progress started on a queue row — if that
+ * row were rebuilt under the pointer, the browser would drop the drag.
+ */
+function drawCalendar(today, counts = dueCountsByDay(state.reviews)) {
+  renderCalendar($('#calendar'), {
+    monthKey: view.month,
+    dueCounts: counts,
+    today,
+    selected: view.selected,
+    tip,
+    onSelect: (key) => { view.selected = key; render(today); },
+    onMonth: (m) => { view.month = m; drawCalendar(today); },
+    onDrop: (key, slug) => moveTo(slug, key),
+  });
+}
+
+/**
+ * Drag a review onto another day. A move is not a review: only the date
+ * changes, so the interval ladder picks up exactly where it was.
+ */
+async function moveTo(slug, key) {
+  const review = state.reviews[slug];
+  if (!review || review.dueOn === key) return;
+  await reviewAction(slug, 'move', { to: key });
+  tip.hide();
+  await load();
+  const p = state.problems[slug];
+  flash(`Moved ${p?.title || slug} to ${key}. Its review cycle is unchanged.`);
+}
+
+let flashTimer = null;
+function flash(text) {
+  const el = $('#q-flash');
+  el.textContent = text;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { el.textContent = ''; }, 4000);
 }
 
 function dayOf(ms, tz) {
@@ -230,36 +283,13 @@ function patternChips(problem) {
     .join('');
 }
 
-// ---- group filter ----
-
-const filterActive = () => view.group !== 'all' || view.difficulty !== 'all';
-
-function matchesFilter(problem) {
-  if (view.group !== 'all' && !hasTag(problem, view.group)) return false;
-  if (view.difficulty !== 'all' && (problem?.difficulty || 'Unknown') !== view.difficulty) return false;
-  return true;
-}
-
-/** The reviews the current filter lets through, keyed by slug as they came. */
-function filterReviews(reviews) {
-  if (!filterActive()) return reviews;
-  const out = {};
-  for (const [slug, r] of Object.entries(reviews)) {
-    if (matchesFilter(state.problems[slug])) out[slug] = r;
-  }
-  return out;
-}
+// ---- problem filters ----
 
 /**
- * The group and difficulty selects, drawn twice: above the calendar and above
- * the problem index. One filter state, two places to see and set it.
+ * The group, difficulty, status and sort selects above the problem index.
  *
- * Options come from every tracked problem, not just the scheduled ones. The
- * rule is still that a tag which could only ever return an empty list is worse
- * than no tag at all — but the index lists removed and unscheduled problems
- * too, so a tag that only appears on those now has somewhere to land. The count
- * describes the group itself, which is why the Reviews card can show fewer rows
- * than the number beside the tag it is filtered to.
+ * Options come from every tracked problem, not just the scheduled ones: the
+ * index lists retired and unscheduled problems too.
  *
  * Matching is on the problem's whole tag list, not on the one or two chips it
  * shows, so filtering by "Linked List" finds the linked-list problem whose chip
@@ -277,7 +307,7 @@ function renderFilters() {
   }
   const groupHtml = `<option value="all">All groups</option>`
     + groups.map((g) => `<option value="${escapeHtml(g.tag)}">${escapeHtml(g.tag)} (${g.count})</option>`).join('');
-  for (const sel of [$('#f-group'), $('#db-group')]) {
+  for (const sel of [$('#db-group')]) {
     sel.innerHTML = groupHtml;
     sel.value = view.group;
   }
@@ -287,7 +317,7 @@ function renderFilters() {
     .filter(({ d, n }) => n || d === view.difficulty);
   const diffHtml = `<option value="all">Any difficulty</option>`
     + present.map(({ d, n }) => `<option value="${d}">${d} (${n})</option>`).join('');
-  for (const sel of [$('#f-diff'), $('#db-diff')]) {
+  for (const sel of [$('#db-diff')]) {
     sel.innerHTML = diffHtml;
     sel.value = view.difficulty;
   }
@@ -301,7 +331,6 @@ function renderFilters() {
   sortSel.innerHTML = SORTS.map((o) => `<option value="${o.value}">${o.label}</option>`).join('');
   sortSel.value = view.sort;
 
-  $('#btn-filter-clear').hidden = !filterActive();
 }
 
 function setFilter(patch) {
@@ -338,7 +367,7 @@ function renderPatterns(problems) {
   el.innerHTML = shown.map((c) => `
     <button type="button" class="pat-row" data-group="${escapeHtml(c.tag)}"
       aria-pressed="${view.group === c.tag}"
-      title="Show only ${escapeHtml(c.tag)} reviews">
+      title="Show only ${escapeHtml(c.tag)} problems">
       <span class="pat-tag">${escapeHtml(c.tag)}</span>
       <span class="pat-bar"><i style="width:${Math.max(4, (c.count / max) * 100)}%"></i></span>
       <span class="pat-n tabular">${c.count}</span>
@@ -359,37 +388,31 @@ function flagButton(review) {
 }
 
 /**
- * The overflow menu on a queue row: everything that isn't Done or Again.
- * `compact` drops the scheduling half, for rows that aren't due — there is
- * nothing to push back, but you may well want the problem off the schedule.
+ * The overflow menu on a row: Again, tags, needs-review and Retire. Dates
+ * aren't here — dragging a row onto the calendar is how a review moves.
  */
-function moreMenu(slug, review, intervals, { compact = false } = {}) {
-  const cycle = review ? intervalAt(intervals, review.stage) : 0;
-  const schedule = !review ? '' : `
-    <p class="menu-h">Push it back</p>
-    ${DELAY_PRESETS.map((o) =>
-      `<button type="button" class="menu-item" data-act="delay" data-days="${o.days}">${o.label}</button>`).join('')}
-    <div class="menu-row">
-      <input class="q-days" type="number" min="1" max="3650" step="1" placeholder="days"
-        aria-label="Delay by a number of days">
-      <button type="button" class="btn btn-sm" data-act="delay" data-days="custom">Delay</button>
-    </div>
-    <hr class="menu-sep">
-    <button type="button" class="menu-item" data-act="skip">
-      Skip this cycle <span class="menu-hint">+${cycle}d, stage ${review.stage + 1} kept</span>
+function moreMenu(slug, review, { includeAgain = false, includeFlag = false } = {}) {
+  const againItem = (includeAgain && review) ? `
+    <button type="button" class="menu-item" data-act="again">
+      Again <span class="menu-hint">Back tomorrow</span>
     </button>
-    <hr class="menu-sep">`;
+    <hr class="menu-sep">` : '';
+  const flagItem = (includeFlag && review) ? `
+    <button type="button" class="menu-item" data-act="${review.needsReview ? 'unflag' : 'flag'}">
+      ${review.needsReview ? '★ Remove needs-review mark' : '☆ Mark as needs review'}
+    </button>` : '';
 
   return `
     <details class="menu">
       <summary class="btn btn-sm" aria-label="More actions">More</summary>
       <div class="menu-pop">
-        ${compact ? '' : schedule}
+        ${againItem}
         ${tagEditor(slug)}
+        ${flagItem}
         ${review ? `
         <button type="button" class="menu-item" data-act="retire">
-          Remove from review
-          <span class="menu-hint">Off the calendar. Stays in your solved history.</span>
+          Retire
+          <span class="menu-hint">Off the calendar, into the Retired tab. Still counted as solved.</span>
         </button>` : ''}
       </div>
     </details>`;
@@ -399,11 +422,11 @@ function moreMenu(slug, review, intervals, { compact = false } = {}) {
  * The same menu on a recent solve, where the useful action is "stop asking me
  * about this one" — you have just seen it and know whether it needs revisiting.
  */
-function recentMenu(slug, review, intervals) {
+function recentMenu(slug, review) {
   if (review?.retired) {
     return `<button class="btn btn-sm" data-act="restore" title="Put this back on the review schedule">Restore</button>`;
   }
-  return moreMenu(slug, review, intervals, { compact: true });
+  return moreMenu(slug, review);
 }
 
 /**
@@ -473,7 +496,7 @@ function renderProblems(today) {
 
   const el = $('#problems');
   if (!rows.length) {
-    el.innerHTML = '<p class="empty">Nothing tracked yet. Solve a problem on LeetCode '
+    el.innerHTML = '<p class="empty">Nothing tracked yet. Solve a problem on LeetCode or NeetCode '
       + 'and it will show up here.</p>';
     return;
   }
@@ -494,7 +517,7 @@ function renderProblems(today) {
     return `
       <div class="db-item" data-slug="${escapeHtml(r.slug)}"${r.retired ? ' data-off="1"' : ''}>
         <div class="db-main">
-          <a class="q-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+          <a class="q-title" href="${problemUrl(r.slug, meta.host, p)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
           <span class="q-meta">
             <span class="db-status" data-s="${r.status}">${STATUS_LABEL[r.status]}</span>
             ${when}
@@ -505,7 +528,7 @@ function renderProblems(today) {
         ${r.difficulty !== 'Unknown' ? `<span class="tag" data-d="${r.difficulty}">${r.difficulty}</span>` : ''}
         <span class="db-when">${r.lastSolvedAt ? relativeDay(dayOf(r.lastSolvedAt, settings.timezone), today) : ''}</span>
         ${flagButton(r.review)}
-        ${recentMenu(r.slug, r.review, settings.intervals)}
+        ${recentMenu(r.slug, r.review)}
       </div>`;
   }).join('')
     + (found.length > shown.length
@@ -516,70 +539,92 @@ function renderProblems(today) {
 
 const QUEUE_PREVIEW = 10;
 
-function renderQueue(today, counts) {
-  const { reviews, problems, settings, meta } = state;
-  const shown = filterReviews(reviews);
+/** "Wed, Oct 14" for a day key. */
+function longDate(key) {
+  return new Date(`${key}T12:00:00Z`).toLocaleDateString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+  });
+}
+
+/**
+ * Two counts, never one number doing two jobs. "Due today" is always shown
+ * and includes overdue and needs-review problems; the selected day appears
+ * beside it only when you pick another date, and counts just what is
+ * scheduled on that date. The one the list below belongs to is outlined, in
+ * the same accent as the selected calendar day.
+ */
+function renderCounts(today, dueToday) {
+  const sel = view.selected;
+  const onOther = sel !== today;
+  const selCount = onOther ? activeReviews(state.reviews).filter((r) => r.dueOn === sel).length : 0;
+  const box = (key, n, label, sub, active) => `
+    <button type="button" class="rev-count" data-day="${key}" aria-pressed="${active}">
+      <span class="figure tabular">${n}</span>
+      <span class="rev-count-txt">
+        <span class="rev-count-label">${label}</span>
+        <span class="rev-count-sub">${sub}</span>
+      </span>
+    </button>`;
+  $('#rev-counts').innerHTML =
+    box(today, dueToday, 'due today', longDate(today), !onOther)
+    + (onOther
+      ? box(sel, selCount, `scheduled ${relativeDay(sel, today)}`, longDate(sel), true)
+      : '');
+}
+
+// Today's list never runs short: when fewer than this many are due, the
+// next ones on the schedule fill it up, so there is always something to do.
+const QUEUE_MIN = 5;
+
+function renderQueue(today) {
+  const { reviews } = state;
   const showingToday = view.selected === today;
   const all = showingToday
-    ? dueBy(shown, today)
-    : activeReviews(shown).filter((r) => r.dueOn === view.selected);
+    ? dueBy(reviews, today)
+    : activeReviews(reviews).filter((r) => r.dueOn === view.selected);
 
-  const inGroup = filterActive()
-    ? ` <span class="q-filter">in ${escapeHtml([
-        view.group === 'all' ? '' : view.group,
-        view.difficulty === 'all' ? '' : view.difficulty,
-      ].filter(Boolean).join(' · '))}</span>`
-    : '';
-  const heading = showingToday ? 'Due today' : `Scheduled for ${view.selected}`;
+  // Top-up from the days ahead, soonest first. Same buttons as a due row —
+  // reviewing early is still a review, scheduled on from today.
+  const ahead = showingToday && all.length < QUEUE_MIN
+    ? activeReviews(reviews)
+      .filter((r) => r.dueOn > today && !r.needsReview)
+      .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.slug.localeCompare(b.slug))
+      .slice(0, QUEUE_MIN - all.length)
+    : [];
 
   const el = $('#queue');
-  if (!all.length) {
-    el.innerHTML = `<h3>${heading}${inGroup}</h3><p class="empty">${
-      filterActive()
-        ? 'Nothing here in this group.'
-        : showingToday ? 'Nothing due. Enjoy the day off.' : 'Nothing scheduled for this day.'
-    }</p>`;
+  if (!all.length && !ahead.length) {
+    el.innerHTML = `<p class="empty">${showingToday
+      ? 'Nothing due, and nothing scheduled. Solve something new and it will show up here.'
+      : 'Nothing scheduled for this day.'}</p>`;
     return;
   }
 
-  // A long overdue pile would push the rest of the page out of reach, so only
-  // the first screenful is drawn until asked otherwise.
   const list = view.showAllQueue ? all : all.slice(0, QUEUE_PREVIEW);
 
-  el.innerHTML = `<h3>${heading}${inGroup} · ${all.length}</h3>` + list.map((r) => {
-    const p = problems[r.slug] || { title: r.slug };
-    const late = r.dueOn < today;
-    const when = late
-      ? `<span class="overdue">due ${relativeDay(r.dueOn, today)}</span>`
-      : `<span>${r.dueOn === today ? `stage ${r.stage + 1}` : `due ${relativeDay(r.dueOn, today)}`}</span>`;
-    // What each of the two "I knew it" buttons schedules, spelled out rather
-    // than left for you to work out from the ladder.
-    const nextUp = intervalAt(settings.intervals, r.stage + 1);
-    const afterAce = intervalAt(settings.intervals, r.stage + 3);
-    return `
-      <div class="q-item" data-slug="${escapeHtml(r.slug)}"${r.needsReview ? ' data-flagged="1"' : ''}>
-        <div class="q-flags">
-          <button class="q-flag" data-flag="important" aria-pressed="${!!r.important}"
-                  title="Must-do — keeps this at the top of the queue">★</button>
-          <button class="q-flag" data-flag="struggling" aria-pressed="${!!r.struggling}"
-                  title="Struggling with this one">⚑</button>
-        </div>
-        <div class="q-main">
-          <a class="q-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
-          <span class="q-meta">${r.needsReview ? '<span class="flagged">Needs review</span>' : ''}${when}${patternChips(p)}</span>
-        </div>
-        ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
-        <div class="q-actions">
-          <button class="btn btn-sm btn-primary" data-act="done"
-            title="Reviewed — next rung of the ladder, back in ${nextUp} days">Done</button>
-          <button class="btn btn-sm btn-ace" data-act="ace"
-            title="Nailed it — skips a cycle. Still back in ${nextUp} days, but two rungs up, so the review after that is ${afterAce} days out.">Nailed it</button>
-          <button class="btn btn-sm" data-act="again">Again</button>
-          ${moreMenu(r.slug, r, settings.intervals)}
-          ${flagButton(r)}
-        </div>
-      </div>`;
-  }).join('')
+  // The upcoming rows sit under a divider and their own day headings, so a
+  // problem pulled in early never reads as one that was due.
+  let lastDay = null;
+  const aheadRows = ahead.map((r) => {
+    const head = r.dueOn === lastDay ? '' : `
+      <tr class="q-group"><td colspan="3">
+        <span class="q-group-when">${relativeDay(r.dueOn, today).replace(/^\w/, (c) => c.toUpperCase())}</span>
+        <span class="q-group-date">${longDate(r.dueOn)}</span>
+      </td></tr>`;
+    lastDay = r.dueOn;
+    return head + queueRow(r, today, { early: true });
+  }).join('');
+
+  // No heading: the highlighted count box above already names the day.
+  el.innerHTML = (showingToday && !all.length
+    ? '<p class="q-clear"><span aria-hidden="true">✓</span> All caught up for today. Here\'s what\'s next if you want to get ahead.</p>'
+    : '')
+    + `<div class="q-table-wrap">
+    <table class="q-table">
+      <colgroup><col class="q-col-flags"><col class="q-col-problem"><col class="q-col-actions"></colgroup>
+      <tbody>${list.map((r) => queueRow(r, today)).join('')}${
+        ahead.length ? `<tr class="q-divider"><td colspan="3">Up next</td></tr>${aheadRows}` : ''}</tbody>
+    </table></div>`
     + (all.length > list.length
       ? `<p class="q-more"><button class="linkish" id="btn-queue-all">Show all ${all.length}</button></p>`
       : '');
@@ -588,40 +633,84 @@ function renderQueue(today, counts) {
   if (more) more.addEventListener('click', () => { view.showAllQueue = true; render(today); });
 }
 
+/** One queue row. `early` marks a top-up row that isn't due yet. */
+function queueRow(r, today, { early = false } = {}) {
+  const { problems, settings, meta } = state;
+  const p = problems[r.slug] || { title: r.slug };
+  const late = r.dueOn < today;
+  const nextUp = intervalAt(settings.intervals, r.stage + 1);
+  const afterAce = intervalAt(settings.intervals, r.stage + 3);
+  const lastReviewed = r.lastReviewedAt || null;
+  return `
+    <tr data-slug="${escapeHtml(r.slug)}"${r.needsReview ? ' data-flagged="1"' : ''}${early ? ' data-early="1"' : ''} draggable="true">
+      <td class="q-col-flags">
+        <div class="q-flags">
+          <span class="q-grip" aria-hidden="true" title="Drag onto a calendar day to move it">⠇</span>
+          <button class="q-flag" data-flag="important" aria-pressed="${!!r.important}"
+                  title="Must-do — keeps this at the top of the queue">★</button>
+          <button class="q-flag" data-flag="struggling" aria-pressed="${!!r.struggling}"
+                  title="Struggling with this one">⚑</button>
+        </div>
+      </td>
+      <td class="q-col-problem">
+        <a class="q-title" href="${problemUrl(r.slug, meta.host, p)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+        <span class="q-meta">${r.needsReview ? '<span class="flagged">Needs review</span>' : ''}${
+          p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}${
+          patternChips(p)}${
+          late ? `<span class="q-late">${diffDays(r.dueOn, today)}d late</span>` : ''}${
+          lastReviewed ? `<span class="q-last">reviewed ${relativeDay(lastReviewed, today)}</span>` : ''}</span>
+      </td>
+      <td class="q-col-actions">
+        <div class="q-actions">
+          <button class="btn btn-sm btn-primary" data-act="done"
+            title="Reviewed — next rung of the ladder, back in ${nextUp} days">Done</button>
+          <button class="btn btn-sm btn-ace" data-act="ace"
+            title="Nailed it — skips a cycle. Still back in ${nextUp} days, but two rungs up, so the review after that is ${afterAce} days out.">Nailed it</button>
+          ${moreMenu(r.slug, r, { includeAgain: true, includeFlag: true })}
+        </div>
+      </td>
+    </tr>`;
+}
+
 /**
- * Problems taken off the schedule. Kept visible but out of the way: the point
- * of removing one is not to think about it, and the point of listing them is
- * that "removed" must never feel like "deleted".
+ * Problems taken off the schedule, on their own tab. The point of retiring
+ * one is not to think about it, and the point of listing them is that
+ * "retired" must never feel like "deleted".
  */
-function renderRetired() {
+function renderRetired(today) {
   const { reviews, problems, settings, meta } = state;
   const list = retiredReviews(reviews);
   const el = $('#retired');
 
+  $('#tab-retired-n').textContent = list.length ? String(list.length) : '';
+  $('#ret-note').textContent = list.length
+    ? `${list.length} problem${list.length === 1 ? '' : 's'}` : '';
+
   if (!list.length) {
-    el.innerHTML = '';
+    el.innerHTML = '<p class="empty">Nothing retired. Use <b>More \u2192 Retire</b> on a problem '
+      + 'to take it off the review schedule without losing it.</p>';
     return;
   }
 
-  el.innerHTML = `
-    <details class="retired-box">
-      <summary>Removed from review · ${list.length}</summary>
-      ${list.map((r) => {
-        const p = problems[r.slug] || { title: r.slug };
-        return `
-          <div class="retired-item" data-slug="${escapeHtml(r.slug)}">
-            <a class="retired-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
-            <button class="btn btn-sm" data-act="restore">Restore</button>
-          </div>`;
-      }).join('')}
-      <p class="retired-note">Still counted as solved — they just aren't scheduled.</p>
-    </details>`;
+  el.innerHTML = list.map((r) => {
+    const p = problems[r.slug] || { title: r.slug };
+    const when = [...(r.history || [])].reverse().find((h) => h.action === 'retire')?.on;
+    return `
+      <div class="db-item" data-slug="${escapeHtml(r.slug)}" data-off="1">
+        <div class="db-main">
+          <a class="q-title" href="${problemUrl(r.slug, meta.host, p)}" target="_blank" rel="noreferrer">${titleLine(p, r.slug)}</a>
+          ${patternChips(p) ? `<span class="q-meta">${patternChips(p)}</span>` : ''}
+        </div>
+        ${p.difficulty ? `<span class="tag" data-d="${p.difficulty}">${p.difficulty}</span>` : ''}
+        <span class="db-when">${when ? `retired ${relativeDay(when, today)}` : ''}</span>
+        <button class="btn btn-sm" data-act="restore" title="Put this back on the review schedule">Restore</button>
+      </div>`;
+  }).join('');
 }
 
 /**
  * One handler for every per-problem button, in the queue and in recent solves
- * alike. `delay` is the only one that carries an argument: a preset number of
- * days, or whatever was typed into the box beside the Delay button.
+ * alike.
  */
 async function runAction(btn) {
   const host = btn.closest('[data-slug]');
@@ -659,19 +748,8 @@ async function runAction(btn) {
     return;
   }
 
-  let opts = {};
-  if (action === 'delay') {
-    const input = host.querySelector('.q-days');
-    const days = normaliseDelay(btn.dataset.days === 'custom' ? input?.value : btn.dataset.days);
-    if (!days) {
-      input?.focus();
-      return;
-    }
-    opts = { days };
-  }
-
   btn.disabled = true;
-  await reviewAction(slug, action, opts);
+  await reviewAction(slug, action);
   tip.hide();
   await load();
 }
@@ -697,7 +775,79 @@ $('#queue').addEventListener('click', async (e) => {
   await load();
 });
 
-// A delay menu left open would sit over the row beneath it after a re-render.
+// The count boxes double as a way back: clicking "due today" reselects today.
+$('#rev-counts').addEventListener('click', (e) => {
+  const key = e.target.closest('[data-day]')?.dataset.day;
+  if (!key || key === view.selected) return;
+  view.selected = key;
+  view.month = key.slice(0, 7);
+  render(todayNow());
+});
+
+// ---- drag a queue row onto the calendar ----
+$('#queue').addEventListener('dragstart', (e) => {
+  const row = e.target.closest?.('tr[data-slug]');
+  if (!row) return;
+  e.dataTransfer.setData(DRAG_TYPE, row.dataset.slug);
+  e.dataTransfer.effectAllowed = 'move';
+  row.classList.add('dragging');
+  document.body.classList.add('is-dragging');
+  tip.hide();
+});
+$('#queue').addEventListener('dragend', (e) => {
+  e.target.closest?.('tr')?.classList.remove('dragging');
+  document.body.classList.remove('is-dragging');
+});
+
+// ---- row menus ----
+// The popover is pinned to the viewport rather than to its row. Positioned
+// inside the queue's scroll wrapper it was clipped by it, and opening one
+// near the bottom scrolled the table instead of showing the menu. Here it
+// opens below the button, or above it when there's more room there, and
+// scrolls itself if it is still too tall.
+function placeMenu(menu) {
+  const pop = menu.querySelector('.menu-pop');
+  const btn = menu.querySelector('summary');
+  if (!pop || !btn) return;
+  const gap = 4;
+  const edge = 8;
+  const r = btn.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(260, vw - edge * 2);
+  pop.style.width = `${width}px`;
+  pop.style.left = `${Math.min(Math.max(edge, r.right - width), vw - width - edge)}px`;
+
+  const below = vh - r.bottom - gap - edge;
+  const above = r.top - gap - edge;
+  pop.style.maxHeight = '';
+  const natural = pop.scrollHeight;
+  if (natural <= below || below >= above) {
+    pop.style.top = `${r.bottom + gap}px`;
+    pop.style.bottom = '';
+    pop.style.maxHeight = `${Math.max(below, 120)}px`;
+  } else {
+    pop.style.top = '';
+    pop.style.bottom = `${vh - r.top + gap}px`;
+    pop.style.maxHeight = `${above}px`;
+  }
+}
+
+// `toggle` doesn't bubble, so listen in the capture phase.
+document.addEventListener('toggle', (e) => {
+  const menu = e.target;
+  if (!(menu instanceof HTMLDetailsElement) || !menu.classList.contains('menu') || !menu.open) return;
+  // One at a time: a second menu opening over the first is never wanted.
+  for (const other of document.querySelectorAll('.menu[open]')) if (other !== menu) other.open = false;
+  placeMenu(menu);
+}, true);
+
+// Follow the button while the page scrolls rather than floating loose.
+const replaceOpenMenus = () => document.querySelectorAll('.menu[open]').forEach(placeMenu);
+window.addEventListener('scroll', replaceOpenMenus, { passive: true, capture: true });
+window.addEventListener('resize', replaceOpenMenus);
+
+// A row menu left open would sit over the row beneath it after a re-render.
 document.addEventListener('click', (e) => {
   // A click that re-rendered its own row — a tag edit — reaches this listener
   // after the re-render, because the promise chain drains between listeners.
@@ -750,9 +900,7 @@ $('#problems').addEventListener('click', (e) => {
     renderProblems(todayNow());
     return;
   }
-  // "Clear the search and filters" — the group and difficulty are shared, so
-  // this resets the Reviews card with it. That is the honest behaviour: leaving
-  // them set would mean the index still hid rows after saying it cleared.
+  // "Clear the search and filters".
   view.q = '';
   $('#db-q').value = '';
   view.status = 'all';
@@ -769,20 +917,31 @@ $('#db-diff').addEventListener('change', (e) => {
   setFilter({ difficulty: e.target.value });
 });
 
-// ---- group filter ----
-$('#f-group').addEventListener('change', (e) => setFilter({ group: e.target.value }));
-$('#f-diff').addEventListener('change', (e) => setFilter({ difficulty: e.target.value }));
-$('#btn-filter-clear').addEventListener('click', () => setFilter({ group: 'all', difficulty: 'all' }));
-
-// A pattern in the breakdown is a group: clicking one filters the reviews by
-// it, and clicking it again clears the filter.
+// A pattern in the breakdown is a group: clicking one narrows the problem
+// list below it, and clicking it again clears that.
 $('#patterns').addEventListener('click', (e) => {
   const row = e.target.closest('[data-group]');
   if (!row) return;
   const tag = row.dataset.group;
+  view.dbLimit = DB_PAGE;
   setFilter({ group: view.group === tag ? 'all' : tag });
-  $('#rev-h').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
+
+// A solve recorded on LeetCode or NeetCode lands in storage from the service
+// worker; redraw so the streak and queue catch up without a page reload.
+// Debounced because one solve writes several keys in quick succession.
+let reloadTimer = null;
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (!Object.keys(changes).some((k) => k.startsWith('leettrack:'))) return;
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => load().catch(() => {}), 150);
+});
+
+// ---- tabs ----
+for (const btn of document.querySelectorAll('.tab-btn')) {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+}
 
 $('#btn-sync').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
@@ -800,8 +959,8 @@ $('#btn-sync').addEventListener('click', async (e) => {
 });
 
 $('#btn-theme').addEventListener('click', async () => {
-  const order = ['system', 'light', 'dark'];
-  const next = order[(order.indexOf(state.settings.theme) + 1) % order.length];
+  // A two-way switch. "Match system" is still there in Settings.
+  const next = isDark() ? 'light' : 'dark';
   state.settings = await saveSettings({ theme: next });
   applyTheme(next);
 });
@@ -817,7 +976,6 @@ $('#btn-settings').addEventListener('click', () => {
   $('#f-remind').checked = s.dailyReminder;
   $('#f-hour').value = String(s.reminderHour);
   $('#f-theme').value = s.theme;
-  $('#f-link-site').value = s.linkSite;
   $('#settings-msg').textContent = '';
   dlg.showModal();
 });
@@ -854,7 +1012,6 @@ $('#settings-form').addEventListener('submit', async (e) => {
     reminderHour: Number(f.get('reminderHour')),
     dayStartHour: Number(f.get('dayStartHour')),
     theme: String(f.get('theme')),
-    linkSite: String(f.get('linkSite')),
   });
 
   // Re-file before pruning: `resetHistoryFrom` compares day keys, and they have
@@ -892,6 +1049,93 @@ $('#file-import').addEventListener('change', async (e) => {
   }
   e.target.value = '';
 });
+
+// ---- manual add ----
+$('#add-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#add-slug');
+  const msg = $('#add-msg');
+  const raw = input.value.trim();
+  if (!raw) return;
+
+  const parsed = parseSlug(raw);
+  if (!parsed) {
+    msg.textContent = 'Enter a problem slug or a LeetCode / NeetCode URL.';
+    msg.dataset.ok = '0';
+    return;
+  }
+
+  const { slug, neetcode } = parsed;
+  const fallbackTitle = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const res = await recordSubmission({
+    id: `manual-${slug}-${Date.now()}`,
+    slug,
+    title: fallbackTitle,
+    at: Date.now(),
+    verdict: 'Accepted',
+    source: neetcode ? 'manual-neetcode' : 'manual',
+  });
+
+  if (res.added) {
+    msg.textContent = `Added ${fallbackTitle}. Fetching details…`;
+    msg.dataset.ok = '1';
+    input.value = '';
+    await load();
+    // Enrich in the background — NeetCode first (has its own metadata),
+    // then LeetCode as a fallback for number/tags it might know better.
+    enrichManual(slug).then(() => load()).catch(() => {});
+  } else {
+    msg.textContent = `${fallbackTitle} already tracked — recorded another solve.`;
+    msg.dataset.ok = '1';
+    input.value = '';
+  }
+  setTimeout(() => { msg.textContent = ''; }, 4000);
+});
+
+async function enrichManual(slug) {
+  // NeetCode's metadata API first — works for any NeetCode problem.
+  const nc = await fetchNeetCodeMeta(slug).catch(() => null);
+  if (nc) {
+    await enrichProblem(slug, {
+      title: nc.name,
+      difficulty: nc.difficulty,
+      topicTags: nc.topics || [],
+    });
+  }
+  // Then LeetCode, via the service worker, for the problem number — and to
+  // find out whether LeetCode has the problem at all. If it doesn't, it's
+  // marked NeetCode-only and its links go to NeetCode.
+  await new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      { type: 'leettrack:enrich', slug },
+      () => { void chrome.runtime.lastError; resolve(); },
+    );
+  });
+}
+
+async function fetchNeetCodeMeta(slug) {
+  const res = await fetch('https://neetcode.io/api/getProblemMetadataFunctionHttp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { problemId: slug } }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  const d = json?.data || json?.result;
+  if (!d || !d.name) return null;
+  return d;
+}
+
+function parseSlug(raw) {
+  // Full URL: neetcode.io/problems/… or leetcode.com/problems/…
+  const ncMatch = /neetcode\.io\/problems\/([a-z0-9-]+)/.exec(raw);
+  if (ncMatch) return { slug: ncMatch[1], neetcode: true };
+  const lcMatch = /(?:leetcode\.com|leetcode\.cn)\/problems\/([a-z0-9-]+)/.exec(raw);
+  if (lcMatch) return { slug: lcMatch[1], neetcode: false };
+  // Bare slug: only lowercase, digits, hyphens
+  if (/^[a-z0-9]([a-z0-9-]{0,118}[a-z0-9])?$/.test(raw)) return { slug: raw, neetcode: false };
+  return null;
+}
 
 load().catch((err) => {
   document.querySelector('#main').insertAdjacentHTML('afterbegin',

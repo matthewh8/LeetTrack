@@ -32,9 +32,6 @@ export function defaultSettings() {
     // Hour (0-23, local) at which one day becomes the next.
     dayStartHour: DEFAULT_DAY_START_HOUR,
     theme: 'system',
-    // Which site problem links open on. 'neetcode' points at neetcode.io
-    // instead of the host you're signed into.
-    linkSite: 'leetcode',
     // Inclusive "YYYY-MM-DD" start of tracked history; null = track everything.
     trackFrom: null,
   };
@@ -161,14 +158,19 @@ export async function recordSubmission(sub) {
   if (accepted) {
     const prev = problems[sub.slug];
     firstSolve = !prev;
+    const src = sub.source || '';
+    const originSite = src.includes('neetcode')
+      ? 'neetcode' : (prev?.originSite || null);
     problems[sub.slug] = {
       slug: sub.slug,
       title: sub.title || prev?.title || sub.slug,
       frontendId: sub.frontendId || prev?.frontendId || null,
       difficulty: sub.difficulty || prev?.difficulty || null,
       topicTags: sub.topicTags || prev?.topicTags || [],
-      // Tags removed by hand survive every later solve and every re-sync.
       hiddenTags: prev?.hiddenTags || [],
+      originSite,
+      // Set once LeetCode has said it has no such problem; see `markNeetCodeOnly`.
+      neetcodeOnly: prev?.neetcodeOnly || false,
       firstSolvedAt: prev?.firstSolvedAt || at,
       lastSolvedAt: Math.max(prev?.lastSolvedAt || 0, at),
       solveCount: (prev?.solveCount || 0) + 1,
@@ -390,6 +392,42 @@ export async function resetHistoryFrom(fromKey) {
   await patchMeta({ historyResetAt: Date.now(), trackFrom: from });
 
   return removed;
+}
+
+export async function backfillOriginSite() {
+  const raw = await get([KEYS.problems, KEYS.attempts]);
+  const problems = raw[KEYS.problems] || {};
+  const attempts = raw[KEYS.attempts] || [];
+
+  const ncSlugs = new Set();
+  for (const a of attempts) {
+    if ((a.source || '').includes('neetcode')) ncSlugs.add(a.slug);
+  }
+  if (!ncSlugs.size) return 0;
+
+  let patched = 0;
+  for (const slug of ncSlugs) {
+    if (problems[slug] && !problems[slug].originSite) {
+      problems[slug] = { ...problems[slug], originSite: 'neetcode' };
+      patched++;
+    }
+  }
+  if (patched) await chrome.storage.local.set({ [KEYS.problems]: problems });
+  return patched;
+}
+
+/**
+ * LeetCode has no page for this slug — it is one of NeetCode's own problems.
+ * Links to it go to NeetCode from now on, and the sync stops asking LeetCode
+ * for a number it will never have.
+ */
+export async function markNeetCodeOnly(slug) {
+  const raw = await get(KEYS.problems);
+  const problems = raw[KEYS.problems] || {};
+  if (!problems[slug] || problems[slug].neetcodeOnly) return false;
+  problems[slug] = { ...problems[slug], neetcodeOnly: true, lcMissing: true, originSite: 'neetcode' };
+  await chrome.storage.local.set({ [KEYS.problems]: problems });
+  return true;
 }
 
 export async function clearAll() {

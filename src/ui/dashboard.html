@@ -18,82 +18,75 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <div class="streak" id="streak" tabindex="0" data-lit="0" aria-describedby="streak-pop">
+          <span class="streak-fire" aria-hidden="true">🔥</span>
+          <span class="streak-n tabular" id="streak-n">0</span>
+          <div class="streak-pop" id="streak-pop" role="tooltip">
+            <p class="streak-pop-h" id="streak-sub"></p>
+            <dl>
+              <div><dt>Longest</dt><dd class="tabular" id="streak-longest">—</dd></div>
+              <div><dt>Active days</dt><dd class="tabular" id="streak-active">—</dd></div>
+            </dl>
+          </div>
+        </div>
         <button class="btn btn-sm" id="btn-sync">Sync now</button>
-        <button class="btn btn-sm" id="btn-theme" aria-label="Toggle theme">Theme</button>
+        <button class="btn btn-sm btn-icon" id="btn-theme" aria-label="Switch to dark mode" title="Switch to dark mode">
+          <svg class="i-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M21 14.5A9 9 0 0 1 9.5 3a.6.6 0 0 0-.8-.7A10 10 0 1 0 21.7 15.3a.6.6 0 0 0-.7-.8z"/></svg>
+          <svg class="i-sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
+        </button>
         <button class="btn btn-sm" id="btn-settings" aria-expanded="false">Settings</button>
       </div>
     </div>
   </header>
 
   <main class="wrap" id="main">
-    <!-- Reviews first and full width: it is the only part of this page you act
-         on. Everything below it is a read-out. -->
-    <section class="card block rev-card" aria-labelledby="rev-h">
-      <div class="card-head">
-        <h2 id="rev-h">Reviews</h2>
-        <div class="rev-head-end">
-          <span class="note" id="rev-note"></span>
-          <div class="filters">
-            <label class="visually-hidden" for="f-group">Filter reviews by group</label>
-            <select id="f-group" class="mini"></select>
-            <label class="visually-hidden" for="f-diff">Filter reviews by difficulty</label>
-            <select id="f-diff" class="mini"></select>
-            <button class="btn btn-sm" id="btn-filter-clear" hidden>Clear</button>
+    <nav class="tabs" role="tablist">
+      <button class="tab-btn active" role="tab" data-tab="queue" aria-selected="true">Queue</button>
+      <button class="tab-btn" role="tab" data-tab="problems" aria-selected="false">Problems</button>
+      <button class="tab-btn" role="tab" data-tab="activity" aria-selected="false">Activity</button>
+      <button class="tab-btn" role="tab" data-tab="retired" aria-selected="false">Retired <span class="tab-n tabular" id="tab-retired-n"></span></button>
+    </nav>
+
+    <!-- Queue tab: the actionable view — what's due, work down the list -->
+    <div class="tab-panel active" data-tab="queue" role="tabpanel">
+      <section class="card block rev-card" aria-labelledby="rev-h">
+        <div class="card-head">
+          <h2 id="rev-h">Reviews</h2>
+        </div>
+        <div class="rev-split">
+          <div class="rev-cal">
+            <div id="calendar" class="cal"></div>
+            <section class="add-bar" aria-label="Add a problem manually">
+              <form id="add-form" class="add-form" autocomplete="off">
+                <input type="text" id="add-slug" class="add-input" spellcheck="false"
+                  placeholder="Add a problem — LeetCode / NeetCode URL or slug">
+                <button class="btn btn-sm btn-primary" type="submit">Add</button>
+              </form>
+              <p class="add-msg" id="add-msg" role="status"></p>
+            </section>
+          </div>
+          <div class="rev-side">
+            <div class="rev-counts" id="rev-counts"></div>
+            <p class="stat-sub rev-sub" id="due-sub"></p>
+            <div id="queue" class="queue"></div>
+            <p class="q-flash" id="q-flash" role="status"></p>
           </div>
         </div>
-      </div>
-      <div class="rev-split">
-        <div class="rev-cal">
-          <div id="calendar" class="cal"></div>
-        </div>
-        <div class="rev-side">
-          <div class="rev-summary">
-            <p class="figure tabular" id="due-n">—</p>
-            <div class="rev-summary-txt">
-              <p class="figure-unit">due today</p>
-              <p class="stat-sub" id="due-sub"></p>
-            </div>
-          </div>
-          <div id="queue" class="queue"></div>
-          <div id="retired"></div>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <section class="hero" aria-label="Summary">
-      <div class="card stat">
-        <div class="card-head"><h2>Current streak</h2></div>
-        <div class="stat-body">
-          <p class="figure tabular" id="streak-n">—</p>
-          <p class="figure-unit" id="streak-unit">days</p>
-        </div>
-        <p class="stat-sub" id="streak-sub"></p>
-        <dl class="stat-meta">
-          <div><dt>Longest</dt><dd class="tabular" id="streak-longest">—</dd></div>
-          <div><dt>Active days</dt><dd class="tabular" id="streak-active">—</dd></div>
-        </dl>
-      </div>
-
-      <div class="card stat">
-        <div class="card-head"><h2>Problems solved</h2></div>
+    <!-- Problems tab: browse everything you've tracked -->
+    <div class="tab-panel" data-tab="problems" role="tabpanel">
+      <section class="card stat solved-card" aria-labelledby="solved-h">
+        <div class="card-head"><h2 id="solved-h">Problems solved</h2></div>
         <div class="stat-body">
           <p class="figure tabular" id="solved-n">—</p>
           <p class="figure-unit">unique</p>
         </div>
         <div class="diffbar" id="diffbar" role="img" aria-label="Solved by difficulty"></div>
         <ul class="difflegend" id="difflegend"></ul>
-      </div>
-    </section>
+      </section>
 
-    <section class="card block" aria-labelledby="hm-h">
-      <div class="card-head">
-        <h2 id="hm-h">Activity</h2>
-        <span class="note" id="hm-note"></span>
-      </div>
-      <div class="heatmap-scroll"><div id="heatmap"></div></div>
-    </section>
-
-    <div class="two-col">
       <section class="card block" aria-labelledby="pat-h">
         <div class="card-head">
           <h2 id="pat-h">Patterns</h2>
@@ -102,34 +95,56 @@
         <div id="patterns" class="patterns"></div>
       </section>
 
+      <section class="card block" aria-labelledby="db-h">
+        <div class="card-head">
+          <h2 id="db-h">All problems</h2>
+          <span class="note" id="db-note"></span>
+        </div>
+        <div class="db-controls">
+          <label class="visually-hidden" for="db-q">Search problems</label>
+          <input type="search" id="db-q" class="db-search" autocomplete="off" spellcheck="false"
+            placeholder="Search by number, title, or tag…">
+          <label class="visually-hidden" for="db-group">Filter by group</label>
+          <select id="db-group" class="mini"></select>
+          <label class="visually-hidden" for="db-diff">Filter by difficulty</label>
+          <select id="db-diff" class="mini"></select>
+          <label class="visually-hidden" for="db-status">Filter by review status</label>
+          <select id="db-status" class="mini"></select>
+          <label class="visually-hidden" for="db-sort">Sort by</label>
+          <select id="db-sort" class="mini"></select>
+        </div>
+        <div id="problems" class="db"></div>
+      </section>
+    </div>
+
+    <!-- Activity tab: history and recent work -->
+    <div class="tab-panel" data-tab="activity" role="tabpanel">
+      <section class="card block" aria-labelledby="hm-h">
+        <div class="card-head">
+          <h2 id="hm-h">Activity</h2>
+          <span class="note" id="hm-note"></span>
+        </div>
+        <div class="heatmap-scroll"><div id="heatmap"></div></div>
+      </section>
+
       <section class="card block" aria-labelledby="rs-h">
         <div class="card-head"><h2 id="rs-h">Recent solves</h2></div>
         <div id="recent" class="recent"></div>
       </section>
     </div>
 
-    <!-- The index: every tracked problem, searchable, and narrowed by the same
-         group and difficulty filter the Reviews card is set to. -->
-    <section class="card block" aria-labelledby="db-h">
-      <div class="card-head">
-        <h2 id="db-h">All problems</h2>
-        <span class="note" id="db-note"></span>
-      </div>
-      <div class="db-controls">
-        <label class="visually-hidden" for="db-q">Search problems</label>
-        <input type="search" id="db-q" class="db-search" autocomplete="off" spellcheck="false"
-          placeholder="Search by number, title, or tag…">
-        <label class="visually-hidden" for="db-group">Filter by group</label>
-        <select id="db-group" class="mini"></select>
-        <label class="visually-hidden" for="db-diff">Filter by difficulty</label>
-        <select id="db-diff" class="mini"></select>
-        <label class="visually-hidden" for="db-status">Filter by review status</label>
-        <select id="db-status" class="mini"></select>
-        <label class="visually-hidden" for="db-sort">Sort by</label>
-        <select id="db-sort" class="mini"></select>
-      </div>
-      <div id="problems" class="db"></div>
-    </section>
+    <!-- Retired tab: off the review schedule, still counted as solved -->
+    <div class="tab-panel" data-tab="retired" role="tabpanel">
+      <section class="card block" aria-labelledby="ret-h">
+        <div class="card-head">
+          <h2 id="ret-h">Retired from review</h2>
+          <span class="note" id="ret-note"></span>
+        </div>
+        <p class="ret-intro">Off the calendar and out of the queue, but still counted as solved.
+          Restore one to put it back on the schedule.</p>
+        <div id="retired" class="db"></div>
+      </section>
+    </div>
 
     <p class="footnote">
       Everything stays in this browser. Nothing is uploaded.
@@ -153,8 +168,8 @@
       <label class="field">
         <span>Review intervals (days)</span>
         <input name="intervals" id="f-intervals" inputmode="numeric" autocomplete="off">
-        <small>Comma separated. Each “Done” moves a problem one rung up;
-          “Nailed it” moves it two. The last rung repeats forever, so a mature
+        <small>Comma separated. Each "Done" moves a problem one rung up;
+          "Nailed it" moves it two. The last rung repeats forever, so a mature
           problem keeps coming back at that cadence instead of vanishing.</small>
       </label>
 
@@ -192,16 +207,6 @@
         </select>
       </label>
 
-      <label class="field">
-        <span>Open problem links on</span>
-        <select name="linkSite" id="f-link-site">
-          <option value="leetcode">LeetCode</option>
-          <option value="neetcode">NeetCode</option>
-        </select>
-        <small>Where the problem title in the queue, recent solves, and
-          problem list points. NeetCode uses the same slug as LeetCode for the
-          problems it hosts.</small>
-      </label>
 
       <p class="sheet-msg" id="settings-msg" role="status"></p>
 

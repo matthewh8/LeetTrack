@@ -2,22 +2,27 @@
 
 import {
   recordSubmission, enrichProblem, readAll, getSettings, patchMeta, reviewAction, syncDayWindow,
+  backfillOriginSite, markNeetCodeOnly,
 } from '../lib/storage.js';
 import { HOSTS, fetchUserStatus, fetchRecentAccepted, fetchQuestion } from '../lib/leetcode-api.js';
 import { dayKey } from '../lib/time.js';
 import { dueBy } from '../lib/scheduler.js';
 import { needsEnrichment } from '../lib/patterns.js';
+import { leetcodeSlugFor } from '../lib/neetcode-slugs.js';
 
 const SYNC_ALARM = 'leettrack:sync';
 const REMINDER_ALARM = 'leettrack:reminder';
 
 chrome.runtime.onInstalled.addListener(async () => {
   await patchMeta({ installedAt: Date.now() });
-  // An upgrade lands here too: history recorded under the old midnight
-  // boundary gets re-filed once, before anything reads it.
   await syncDayWindow().catch(() => {});
+  await backfillOriginSite().catch(() => {});
   await scheduleAlarms();
-  syncRecent().catch(() => {});
+  enrichPending().catch(() => {});
+  syncRecent().then(
+    () => patchMeta({ lastSyncError: null }),
+    (err) => patchMeta({ lastSyncError: err?.message || String(err), lastSyncErrorAt: Date.now() }),
+  );
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -32,26 +37,56 @@ async function scheduleAlarms() {
   chrome.alarms.create(REMINDER_ALARM, { periodInMinutes: 60, delayInMinutes: 5 });
 }
 
+async function ensureAlarms() {
+  const existing = await chrome.alarms.getAll();
+  const names = existing.map((a) => a.name);
+  if (!names.includes(SYNC_ALARM))
+    chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 30, delayInMinutes: 1 });
+  if (!names.includes(REMINDER_ALARM))
+    chrome.alarms.create(REMINDER_ALARM, { periodInMinutes: 60, delayInMinutes: 5 });
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === SYNC_ALARM) syncRecent().catch(() => {});
+  ensureAlarms().catch(() => {});
+  if (alarm.name === SYNC_ALARM) syncRecent().then(
+    () => patchMeta({ lastSyncError: null }),
+    (err) => patchMeta({ lastSyncError: err?.message || String(err), lastSyncErrorAt: Date.now() }),
+  );
   if (alarm.name === REMINDER_ALARM) maybeRemind().catch(() => {});
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  ensureAlarms().catch(() => {});
   (async () => {
     try {
       if (msg?.type === 'leettrack:submission') {
         const result = await recordSubmission(msg.submission);
         if (result.added && result.firstSolve) {
-          // Difficulty and tags aren't in the submit response; fetch them once.
-          enrichFromGraphQL(msg.submission.slug).catch(() => {});
+          const src = msg.submission.source || '';
+          if (src.startsWith('neetcode')) {
+            // In order, so LeetCode's categories land on top of NeetCode's
+            // coarser topics rather than racing them.
+            const slug = msg.submission.slug;
+            enrichFromNeetCode(slug).catch(() => {})
+              .then(() => enrichFromGraphQL(slug)).catch(() => {});
+          } else {
+            enrichFromGraphQL(msg.submission.slug).catch(() => {});
+          }
         }
         sendResponse({ ok: true, ...result });
         return;
       }
       if (msg?.type === 'leettrack:sync') {
         const n = await syncRecent();
+        await patchMeta({ lastSyncError: null });
         sendResponse({ ok: true, imported: n });
+        return;
+      }
+      if (msg?.type === 'leettrack:enrich') {
+        // Awaited so the dashboard's reload after this sees the result,
+        // including a NeetCode-only mark.
+        await enrichFromGraphQL(msg.slug).catch(() => {});
+        sendResponse({ ok: true });
         return;
       }
       if (msg?.type === 'leettrack:review') {
@@ -74,13 +109,48 @@ function hostForUser(meta) {
 async function enrichFromGraphQL(slug, host) {
   const { meta } = await readAll();
   const base = host || hostForUser(meta);
-  const q = await fetchQuestion(base, slug);
-  if (!q) return;
+  // A renamed NeetCode problem is looked up under LeetCode's name for it, so
+  // it gets LeetCode's number, difficulty and categories.
+  const lcSlug = leetcodeSlugFor(slug);
+  let q;
+  try {
+    q = await fetchQuestion(base, lcSlug);
+  } catch (err) {
+    // An unknown slug comes back as `question: null` or, sometimes, as a
+    // GraphQL error saying so. Anything else — offline, signed out — is not
+    // evidence either way.
+    if (!/does not exist|not found/i.test(err?.message || '')) throw err;
+    q = null;
+  }
+  // No such question on LeetCode, so this slug only exists on NeetCode.
+  if (!q) {
+    await markNeetCodeOnly(slug);
+    return;
+  }
+  const renamed = lcSlug !== slug;
   await enrichProblem(slug, {
-    title: q.title,
+    // A renamed problem keeps NeetCode's title — it's the one you'll recognise.
+    ...(renamed ? { neetcodeOnly: true, leetcodeSlug: lcSlug } : { title: q.title }),
     frontendId: q.questionFrontendId,
     difficulty: q.difficulty,
     topicTags: (q.topicTags || []).map((t) => t.name),
+  });
+}
+
+async function enrichFromNeetCode(slug) {
+  const res = await fetch('https://neetcode.io/api/getProblemMetadataFunctionHttp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { problemId: slug } }),
+  });
+  if (!res.ok) return;
+  const json = await res.json();
+  const d = json?.data || json?.result;
+  if (!d?.name) return;
+  await enrichProblem(slug, {
+    title: d.name,
+    difficulty: d.difficulty || null,
+    topicTags: d.topics || [],
   });
 }
 
@@ -93,6 +163,10 @@ async function syncRecent() {
   await syncDayWindow().catch(() => {});
   const { meta } = await readAll();
   const base = hostForUser(meta);
+
+  // Problem metadata is public, so this runs signed in or not — NeetCode-only
+  // users never sign in to LeetCode, and their problems need it most.
+  await enrichPending(base);
 
   const status = await fetchUserStatus(base);
   if (!status.isSignedIn || !status.username) {
@@ -120,17 +194,21 @@ async function syncRecent() {
     }
   }
 
-  // Backfill number/difficulty/tags for anything captured before we knew them —
-  // live capture never sees any of the three, and problems solved before this
-  // ran have none. Capped per sync so a large history doesn't hammer the
-  // endpoint; it converges over a few syncs.
+  await patchMeta({ lastSyncAt: Date.now() });
+  return imported;
+}
+
+/**
+ * Backfill number/difficulty/tags for anything captured before we knew them —
+ * live capture never sees any of the three, and problems solved before this
+ * ran have none. Capped per run so a large history doesn't hammer the
+ * endpoint; it converges over a few syncs.
+ */
+async function enrichPending(base) {
   const { problems } = await readAll();
   for (const slug of needsEnrichment(problems, 8)) {
     await enrichFromGraphQL(slug, base).catch(() => {});
   }
-
-  await patchMeta({ lastSyncAt: Date.now() });
-  return imported;
 }
 
 async function maybeRemind() {

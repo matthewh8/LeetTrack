@@ -43,7 +43,7 @@ async function render() {
         return `<div class="p-item" data-slug="${esc(r.slug)}">
           ${r.needsReview ? '<span class="p-flag" title="Marked as needing review">\u2605</span>' : ''}
           ${flagMarks(r)}
-          <a class="p-title" href="${problemUrl(r.slug, meta.host, settings.linkSite)}" target="_blank" rel="noreferrer">${
+          <a class="p-title" href="${problemUrl(r.slug, meta.host, problems[r.slug])}" target="_blank" rel="noreferrer">${
             p.frontendId ? `<span class="p-num tabular">${esc(p.frontendId)}.</span> ` : ''}${esc(p.title)}</a>
           <button class="btn btn-sm" data-act="delay" title="Push this to tomorrow">+1d</button>
           <button class="btn btn-sm btn-primary" data-act="done">Done</button>

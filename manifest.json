@@ -5,7 +5,7 @@
   "description": "Streaks, submission quality, and spaced-repetition reviews for LeetCode. Everything stays on your machine.",
   "minimum_chrome_version": "111",
   "permissions": ["storage", "alarms", "notifications", "unlimitedStorage"],
-  "host_permissions": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+  "host_permissions": ["https://leetcode.com/*", "https://leetcode.cn/*", "https://neetcode.io/*"],
   "background": {
     "service_worker": "src/bg/service-worker.js",
     "type": "module"
@@ -39,6 +39,20 @@
     },
     {
       "matches": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+      "js": ["src/content/bridge.js"],
+      "world": "ISOLATED",
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://neetcode.io/*"],
+      "js": ["src/content/neetcode-interceptor.js"],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://neetcode.io/*"],
       "js": ["src/content/bridge.js"],
       "world": "ISOLATED",
       "run_at": "document_start",

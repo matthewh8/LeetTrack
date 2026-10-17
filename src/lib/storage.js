@@ -175,6 +175,7 @@ export async function recordSubmission(sub) {
       difficulty: sub.difficulty || prev?.difficulty || null,
       topicTags: sub.topicTags || prev?.topicTags || [],
       hiddenTags: prev?.hiddenTags || [],
+      ...(prev?.tagsAt ? { tagsAt: prev.tagsAt } : {}),
       originSite,
       // Set once LeetCode has said it has no such problem; see `markNeetCodeOnly`.
       neetcodeOnly: prev?.neetcodeOnly || false,
@@ -184,7 +185,9 @@ export async function recordSubmission(sub) {
       modAt: Date.now(),
     };
     if (!reviews[sub.slug]) {
-      reviews[sub.slug] = stamp(scheduleFirst(sub.slug, key, settings.intervals));
+      // Unstamped: a first schedule is not an edit, and must not outrank a
+      // review with real progress from another device or an import.
+      reviews[sub.slug] = scheduleFirst(sub.slug, key, settings.intervals);
     }
   }
 
@@ -229,7 +232,7 @@ export async function setTagHidden(slug, tag, hidden) {
   if (hidden) current.add(name);
   else current.delete(name);
 
-  const next = stamp({ ...problem, hiddenTags: [...current] });
+  const next = stamp({ ...problem, hiddenTags: [...current], tagsAt: Date.now() });
   await chrome.storage.local.set({ [KEYS.problems]: { ...problems, [slug]: next } });
   return next;
 }
@@ -240,7 +243,7 @@ export async function restoreTags(slug) {
   const problems = raw[KEYS.problems] || {};
   const problem = problems[slug];
   if (!problem?.hiddenTags?.length) return problem || null;
-  const next = stamp({ ...problem, hiddenTags: [] });
+  const next = stamp({ ...problem, hiddenTags: [], tagsAt: Date.now() });
   await chrome.storage.local.set({ [KEYS.problems]: { ...problems, [slug]: next } });
   return next;
 }

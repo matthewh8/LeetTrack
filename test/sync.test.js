@@ -23,6 +23,34 @@ test('the later edit to a review wins', () => {
   assert.equal(mergeSnapshots(b, a).reviews.x.stage, 3);
 });
 
+test('a fresh first schedule never replaces a review with progress', () => {
+  // What a new install's LeetCode backfill makes: stamped, but blank.
+  const blank = { slug: 'x', stage: 0, dueOn: '2026-10-12', lastReviewedAt: null, needsReview: false, history: [], modAt: 9e12 };
+  const real = { slug: 'x', stage: 5, dueOn: '2026-12-15', lastReviewedAt: 1, history: [{}, {}, {}, {}] };
+  assert.equal(mergeSnapshots(snap({ reviews: { x: real } }), snap({ reviews: { x: blank } })).reviews.x.stage, 5);
+  assert.equal(mergeSnapshots(snap({ reviews: { x: blank } }), snap({ reviews: { x: real } })).reviews.x.stage, 5);
+});
+
+test('a flag alone counts as progress', () => {
+  const blank = { slug: 'x', stage: 0, history: [] };
+  const flagged = { slug: 'x', stage: 0, history: [], important: true };
+  assert.equal(mergeSnapshots(snap({ reviews: { x: flagged } }), snap({ reviews: { x: { ...blank, modAt: 9e12 } } })).reviews.x.important, true);
+});
+
+test('a newer bare problem row keeps the older row\'s metadata and tag edits', () => {
+  const bare = { slug: 'x', title: 'x', topicTags: [], hiddenTags: [], lastSolvedAt: 200, solveCount: 1, modAt: 900 };
+  const rich = { slug: 'x', title: 'X Problem', frontendId: '42', difficulty: 'Hard', topicTags: ['Array'], hiddenTags: ['Array'], tagsAt: 50, lastSolvedAt: 100, solveCount: 3 };
+  const p = mergeSnapshots(snap({ problems: { x: bare } }), snap({ problems: { x: rich } })).problems.x;
+  assert.deepEqual([p.title, p.frontendId, p.difficulty, p.topicTags, p.hiddenTags, p.solveCount, p.lastSolvedAt],
+    ['X Problem', '42', 'Hard', ['Array'], ['Array'], 3, 200]);
+});
+
+test('the later tag edit wins, even from the older row', () => {
+  const a = { slug: 'x', hiddenTags: [], tagsAt: 300, modAt: 300 };
+  const b = { slug: 'x', hiddenTags: ['Array'], tagsAt: 100, modAt: 900 };
+  assert.deepEqual(mergeSnapshots(snap({ problems: { x: a } }), snap({ problems: { x: b } })).problems.x.hiddenTags, []);
+});
+
 test('unstamped reviews fall back to the longer history', () => {
   const a = snap({ reviews: { x: { slug: 'x', stage: 1, history: [{}] } } });
   const b = snap({ reviews: { x: { slug: 'x', stage: 2, history: [{}, {}] } } });

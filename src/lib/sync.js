@@ -52,19 +52,46 @@ export function toSnapshot(state, attemptLimit = SYNC_ATTEMPTS) {
 
 const t = (r) => r?.modAt || 0;
 
+// Facts about the problem that either side may have learned first. A fresh
+// solve records a bare row and fills these in later, so a newer row with an
+// empty field must not blank out an older row's answer.
+const PROBLEM_META = ['title', 'frontendId', 'difficulty', 'topicTags', 'originSite', 'leetcodeSlug'];
+const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
+
 function mergeProblem(a, b) {
   const [win, lose] = t(b) > t(a) || (t(b) === t(a) && (b.lastSolvedAt || 0) > (a.lastSolvedAt || 0))
     ? [b, a] : [a, b];
+  const out = { ...win };
+  for (const f of PROBLEM_META) if (empty(out[f]) && !empty(lose[f])) out[f] = lose[f];
+  // A title that is just the slug is the placeholder a bare capture writes.
+  if (out.title === out.slug && lose.title && lose.title !== lose.slug) out.title = lose.title;
+  // Tag removals are an edit of their own, timed separately from the solve.
+  const tagSide = (lose.tagsAt || 0) > (win.tagsAt || 0) ? lose : win;
+  if (tagSide.tagsAt) out.hiddenTags = tagSide.hiddenTags || [];
+  else if (win.hiddenTags || lose.hiddenTags) {
+    out.hiddenTags = [...new Set([...(win.hiddenTags || []), ...(lose.hiddenTags || [])])];
+  }
+  if (tagSide.tagsAt) out.tagsAt = tagSide.tagsAt;
+  if (win.neetcodeOnly || lose.neetcodeOnly) out.neetcodeOnly = true;
   const firsts = [win.firstSolvedAt, lose.firstSolvedAt].filter(Boolean);
-  return {
-    ...win,
-    firstSolvedAt: firsts.length ? Math.min(...firsts) : win.firstSolvedAt,
-    lastSolvedAt: Math.max(win.lastSolvedAt || 0, lose.lastSolvedAt || 0),
-    solveCount: Math.max(win.solveCount || 0, lose.solveCount || 0),
-  };
+  out.firstSolvedAt = firsts.length ? Math.min(...firsts) : win.firstSolvedAt;
+  out.lastSolvedAt = Math.max(win.lastSolvedAt || 0, lose.lastSolvedAt || 0);
+  out.solveCount = Math.max(win.solveCount || 0, lose.solveCount || 0);
+  return out;
+}
+
+// A review nobody has acted on yet: what a solve schedules automatically.
+// Every device that sees the solve makes one, so its timestamp says nothing
+// about your progress and it must never replace a review that has some.
+function untouched(r) {
+  return !r.history?.length && !r.lastReviewedAt && !r.stage
+    && !r.needsReview && !r.retired && !r.important && !r.struggling;
 }
 
 function mergeReview(a, b) {
+  const ua = untouched(a);
+  const ub = untouched(b);
+  if (ua !== ub) return ua ? b : a;
   if (t(a) !== t(b)) return t(b) > t(a) ? b : a;
   const ha = a.history?.length || 0;
   const hb = b.history?.length || 0;
